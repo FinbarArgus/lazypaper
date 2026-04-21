@@ -10,7 +10,8 @@ SCHEDULE_MINUTE_UTC = 0
 SCHEDULE_HOUR_UTC = 16
 SCHEDULE_CRON = f"{SCHEDULE_MINUTE_UTC} {SCHEDULE_HOUR_UTC} * * *"
 
-# Higher weight = stronger match when the phrase appears in title or abstract.
+# Keyword phrases -> weight. Higher weight = stronger match. Matching is case-insensitive and
+# counts occurrences in the article title, abstract, author list, and journal name.
 INTERESTS: dict[str, int] = {
     "autonomic neuroscience": 5,
     "microvasculature": 5,

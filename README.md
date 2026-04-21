@@ -2,7 +2,7 @@
 
 Repository: [github.com/FinbarArgus/lazypaper](https://github.com/FinbarArgus/lazypaper).
 
-Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest per run) sampled from your feeds. Articles are scored against weighted keywords in `config.py` (repository root), then chosen with **softmax-weighted randomness** so the best matches are preferred but not deterministic. If fewer than `PAPERS_PER_DAY` unsent articles exist, the email contains whatever is available. Already-sent articles are stored in `sent_articles.json` (repository root) and skipped.
+Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest per run) sampled from your feeds. Articles are scored against weighted keyword phrases in `config.py` (repository root); each phrase is matched in the **title, abstract, author list, and journal name** (case-insensitive), then one or more picks use **softmax-weighted randomness** so better matches are preferred but not deterministic. If fewer than `PAPERS_PER_DAY` unsent articles exist, the email contains whatever is available. Already-sent articles are stored in `sent_articles.json` (repository root) and skipped.
 
 ## Layout
 

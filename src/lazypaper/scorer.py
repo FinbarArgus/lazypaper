@@ -1,4 +1,4 @@
-"""Score articles by keyword overlap and pick one with softmax-weighted randomness."""
+"""Score articles by keyword overlap (title, abstract, authors, journal) and pick with softmax."""
 
 from __future__ import annotations
 
@@ -9,9 +9,20 @@ from typing import Iterable
 from .cfg import INTERESTS, SELECTION_TEMPERATURE
 
 
+def _article_keyword_text(article: dict[str, str]) -> str:
+    """Haystack for INTERESTS keyword matching: title, abstract, authors, journal."""
+    parts = [
+        article.get("title", ""),
+        article.get("abstract", ""),
+        article.get("authors", ""),
+        article.get("journal", ""),
+    ]
+    return " ".join(p for p in parts if p).lower()
+
+
 def score_article(article: dict[str, str], interests: dict[str, int] | None = None) -> float:
     interests = interests or INTERESTS
-    text = f"{article.get('title', '')} {article.get('abstract', '')}".lower()
+    text = _article_keyword_text(article)
     total = 0.0
     for phrase, weight in interests.items():
         if not phrase:
