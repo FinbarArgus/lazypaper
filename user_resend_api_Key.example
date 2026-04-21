@@ -1,4 +1,0 @@
-# Copy this file to user_resend_api_Key (same directory as config.py) and replace the line below with your key only (no quotes, one line).
-# Do not commit user_resend_api_Key — it is listed in .gitignore.
-
-re_paste_your_resend_api_key_here

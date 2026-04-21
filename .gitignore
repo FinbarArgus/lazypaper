@@ -5,6 +5,3 @@ venv/
 .env
 *.egg-info/
 .pytest_cache/
-
-# Local Resend API key (see config.py / user_resend_api_Key.example)
-user_resend_api_Key
