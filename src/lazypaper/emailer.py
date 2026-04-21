@@ -11,6 +11,15 @@ from resend.exceptions import ResendError
 from .cfg import DEFAULT_RESEND_FROM, RECIPIENT_EMAIL
 
 
+def _env_or_default(name: str, default: str) -> str:
+    """GitHub Actions sets missing secrets to empty env vars; treat those like unset."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    stripped = raw.strip()
+    return stripped if stripped else default
+
+
 def _send_with_friendly_errors(params: dict) -> None:
     try:
         resend.Emails.send(params)
@@ -77,7 +86,7 @@ def send_articles_email(articles: list[dict[str, str]]) -> None:
         raise RuntimeError("RESEND_API_KEY is not set.")
 
     resend.api_key = api_key
-    from_addr = os.environ.get("RESEND_FROM", DEFAULT_RESEND_FROM)
+    from_addr = _env_or_default("RESEND_FROM", DEFAULT_RESEND_FROM)
     if len(articles) == 1:
         subject = f"LazyPaper: {articles[0].get('title', 'Paper')[:120]}"
     else:
@@ -85,7 +94,7 @@ def send_articles_email(articles: list[dict[str, str]]) -> None:
 
     params: dict = {
         "from": from_addr,
-        "to": [os.environ.get("LAZYPAPER_TO", RECIPIENT_EMAIL)],
+        "to": [_env_or_default("LAZYPAPER_TO", RECIPIENT_EMAIL)],
         "subject": subject,
         "html": build_html_digest(articles),
     }
@@ -99,7 +108,7 @@ def send_no_articles_email() -> None:
         raise RuntimeError("RESEND_API_KEY is not set.")
 
     resend.api_key = api_key
-    from_addr = os.environ.get("RESEND_FROM", DEFAULT_RESEND_FROM)
+    from_addr = _env_or_default("RESEND_FROM", DEFAULT_RESEND_FROM)
     body = (
         "<p>No new articles were available from the configured feeds after removing "
         "ones already sent. Try adding feeds in <code>config.py</code> or trimming "
@@ -108,7 +117,7 @@ def send_no_articles_email() -> None:
     _send_with_friendly_errors(
         {
             "from": from_addr,
-            "to": [os.environ.get("LAZYPAPER_TO", RECIPIENT_EMAIL)],
+            "to": [_env_or_default("LAZYPAPER_TO", RECIPIENT_EMAIL)],
             "subject": "LazyPaper: no new article today",
             "html": body,
         }

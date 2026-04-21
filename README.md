@@ -46,7 +46,7 @@ Before each send, workflows run **`scripts/check_domains.py`**, which checks tha
 
 ## Troubleshooting
 
-- **`resend.exceptions.ValidationError: The domain is invalid`** — Resend refused the `From` address. Either verify your own domain in the Resend dashboard and set the **`RESEND_FROM`** secret to a sender on that domain (e.g. `LazyPaper <news@your-domain.com>`), or make sure the recipient (`RECIPIENT_EMAIL` in `config.py`, or the `LAZYPAPER_TO` secret/env var) is exactly the email you registered with Resend and leave the default `onboarding@resend.dev` sender.
+- **`resend.exceptions.ValidationError: The domain is invalid`** — Resend refused the `From` address. Either verify your own domain in the Resend dashboard and set the **`RESEND_FROM`** secret to a sender on that domain (e.g. `LazyPaper <news@your-domain.com>`), or make sure the recipient (`RECIPIENT_EMAIL` in `config.py`, or the `LAZYPAPER_TO` secret/env var) is exactly the email you registered with Resend and leave the default `onboarding@resend.dev` sender. If logs showed `from=''`, **`RESEND_FROM` was set but empty** (GitHub still injects the variable); the app now treats blank `RESEND_FROM` / `LAZYPAPER_TO` like unset and falls back to `config.py` defaults.
 - **`RESEND_API_KEY is not set`** — Add the `RESEND_API_KEY` GitHub Actions secret (and/or `export` it locally).
 - **DNS/feed errors printed by `scripts/check_domains.py`** — Fix the offending RSS URL in `SOURCES` or the email in `config.py` / the secret it names.
 
