@@ -1,5 +1,7 @@
 # lazypaper
 
+Repository: [github.com/FinbarArgus/lazypaper](https://github.com/FinbarArgus/lazypaper).
+
 Daily email with one journal article sampled from your feeds. Articles are scored against weighted keywords in `config.py`, then chosen with **softmax-weighted randomness** so the best matches are preferred but not deterministic. Already-sent articles are stored in `sent_articles.json` and skipped.
 
 ## What you need
