@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Fetch journal feeds, pick a relevant unsent article, email it, record the send."""
+"""Fetch journal feeds, pick unsent articles, email them, record the send."""
 
 from __future__ import annotations
 
@@ -9,10 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-from .config import INTERESTS
-from .emailer import send_article_email, send_no_articles_email
+from .cfg import INTERESTS, PAPERS_PER_DAY
+from .emailer import send_articles_email, send_no_articles_email
 from .fetcher import fetch_all_articles
-from .scorer import filter_unsent, pick_article
+from .scorer import filter_unsent, pick_articles
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -63,7 +63,9 @@ def load_sent_ids() -> set[str]:
     return ids
 
 
-def append_sent(article: dict[str, str]) -> None:
+def append_sent(articles: list[dict[str, str]]) -> None:
+    if not articles:
+        return
     rows: list[dict] = []
     if SENT_FILE.exists():
         try:
@@ -73,14 +75,15 @@ def append_sent(article: dict[str, str]) -> None:
     if not isinstance(rows, list):
         rows = []
     today = datetime.now(timezone.utc).date().isoformat()
-    rows.append(
-        {
-            "id": article["id"],
-            "sent_at": today,
-            "title": article.get("title", ""),
-            "journal": article.get("journal", ""),
-        }
-    )
+    for article in articles:
+        rows.append(
+            {
+                "id": article["id"],
+                "sent_at": today,
+                "title": article.get("title", ""),
+                "journal": article.get("journal", ""),
+            }
+        )
     SENT_FILE.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
 
 
@@ -99,13 +102,16 @@ def main() -> int:
         send_no_articles_email()
         return 0
 
-    chosen = pick_article(candidates, interests=INTERESTS)
+    n = max(1, PAPERS_PER_DAY)
+    chosen = pick_articles(candidates, n, interests=INTERESTS)
     if not chosen:
         send_no_articles_email()
         return 0
 
-    logger.info("Selected: %s", chosen.get("title", "")[:80])
-    send_article_email(chosen)
+    for i, a in enumerate(chosen):
+        logger.info("Selected [%s/%s]: %s", i + 1, len(chosen), a.get("title", "")[:80])
+    send_articles_email(chosen)
     append_sent(chosen)
-    logger.info("Recorded send for %s", chosen["id"])
+    for a in chosen:
+        logger.info("Recorded send for %s", a["id"])
     return 0

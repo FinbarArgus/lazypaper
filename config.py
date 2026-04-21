@@ -1,6 +1,14 @@
-"""Edit INTERESTS and SOURCES here."""
+"""Edit INTERESTS, schedule, and SOURCES here."""
 
 RECIPIENT_EMAIL = "finbar.argus@auckland.ac.nz"
+
+# When to run the daily email in GitHub Actions: minute and hour in **UTC** (0–59 / 0–23).
+# Example: 16, 0 → 16:00 UTC, which is 04:00 the same calendar day in NZST (UTC+12) or
+# 05:00 local during NZDT (UTC+13). Change these to your preferred time, then set the
+# `on.schedule` cron in `.github/workflows/daily_email.yml` to the same as `SCHEDULE_CRON` below.
+SCHEDULE_MINUTE_UTC = 0
+SCHEDULE_HOUR_UTC = 16
+SCHEDULE_CRON = f"{SCHEDULE_MINUTE_UTC} {SCHEDULE_HOUR_UTC} * * *"
 
 # Higher weight = stronger match when the phrase appears in title or abstract.
 INTERESTS: dict[str, int] = {
@@ -53,6 +61,9 @@ SOURCES: list[dict[str, str]] = [
 
 # Softmax temperature for weighted random pick (lower = more greedy).
 SELECTION_TEMPERATURE = 0.5
+
+# How many distinct papers to include in one daily email (and record as sent at once).
+PAPERS_PER_DAY = 1
 
 # Optional override via env in CI: default Resend sandbox sender.
 DEFAULT_RESEND_FROM = "LazyPaper <onboarding@resend.dev>"

@@ -6,7 +6,7 @@ import math
 import random
 from typing import Iterable
 
-from .config import INTERESTS, SELECTION_TEMPERATURE
+from .cfg import INTERESTS, SELECTION_TEMPERATURE
 
 
 def score_article(article: dict[str, str], interests: dict[str, int] | None = None) -> float:
@@ -43,6 +43,28 @@ def pick_article(
     ssum = sum(exps)
     weights = [e / ssum for e in exps]
     return random.choices(articles, weights=weights, k=1)[0]
+
+
+def pick_articles(
+    articles: list[dict[str, str]],
+    n: int,
+    *,
+    interests: dict[str, int] | None = None,
+    temperature: float | None = None,
+) -> list[dict[str, str]]:
+    """Pick up to n distinct articles, each with softmax on the remaining pool (no replacement)."""
+    if n < 1 or not articles:
+        return []
+    pool = list(articles)
+    out: list[dict[str, str]] = []
+    for _ in range(min(n, len(pool))):
+        one = pick_article(pool, interests=interests, temperature=temperature)
+        if not one:
+            break
+        out.append(one)
+        aid = one.get("id")
+        pool = [a for a in pool if a.get("id") != aid]
+    return out
 
 
 def filter_unsent(articles: Iterable[dict[str, str]], sent_ids: set[str]) -> list[dict[str, str]]:

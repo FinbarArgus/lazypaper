@@ -2,7 +2,7 @@ name: Daily paper email
 
 on:
   schedule:
-    # 04:00 NZST (UTC+12) ≈ 16:00 UTC previous calendar day. During NZDT (UTC+13), same UTC time is 05:00 local.
+    # Must match `SCHEDULE_CRON` in `config.py` at repo root (edit SCHEDULE_MINUTE_UTC / SCHEDULE_HOUR_UTC there).
     - cron: "0 16 * * *"
   workflow_dispatch:
 

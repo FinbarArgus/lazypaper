@@ -10,7 +10,7 @@ import feedparser
 import requests
 from bs4 import BeautifulSoup
 
-from .config import SOURCES
+from .cfg import SOURCES
 
 logger = logging.getLogger(__name__)
 
