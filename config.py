@@ -1,5 +1,28 @@
 """Edit INTERESTS, schedule, and SOURCES here."""
 
+from pathlib import Path
+
+_CONFIG_DIR = Path(__file__).resolve().parent
+
+# Put your Resend API key in this file (one line, repo root). Gitignored — do not commit.
+USER_RESEND_API_KEY_FILE = "user_resend_api_Key"
+
+
+def _read_resend_api_key_from_file() -> str | None:
+    path = _CONFIG_DIR / USER_RESEND_API_KEY_FILE
+    if not path.is_file():
+        return None
+    text = path.read_text(encoding="utf-8")
+    for line in text.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            return line
+    return None
+
+
+# Used locally when `RESEND_API_KEY` is not set; GitHub Actions should use the secret instead.
+RESEND_API_KEY_FROM_FILE = _read_resend_api_key_from_file()
+
 RECIPIENT_EMAIL = "finbar.argus@auckland.ac.nz"
 
 # When to run the daily email in GitHub Actions: minute and hour in **UTC** (0–59 / 0–23).

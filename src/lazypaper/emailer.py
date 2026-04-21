@@ -7,7 +7,11 @@ import os
 
 import resend
 
-from .cfg import DEFAULT_RESEND_FROM, RECIPIENT_EMAIL
+from .cfg import DEFAULT_RESEND_FROM, RECIPIENT_EMAIL, RESEND_API_KEY_FROM_FILE
+
+
+def _resend_api_key() -> str | None:
+    return os.environ.get("RESEND_API_KEY") or RESEND_API_KEY_FROM_FILE
 
 
 def _article_html_section(article: dict[str, str]) -> str:
@@ -48,9 +52,11 @@ def send_articles_email(articles: list[dict[str, str]]) -> None:
     if not articles:
         raise ValueError("articles must be non-empty")
 
-    api_key = os.environ.get("RESEND_API_KEY")
+    api_key = _resend_api_key()
     if not api_key:
-        raise RuntimeError("RESEND_API_KEY is not set.")
+        raise RuntimeError(
+            "RESEND_API_KEY is not set (environment variable or user_resend_api_Key file)."
+        )
 
     resend.api_key = api_key
     from_addr = os.environ.get("RESEND_FROM", DEFAULT_RESEND_FROM)
@@ -70,9 +76,11 @@ def send_articles_email(articles: list[dict[str, str]]) -> None:
 
 
 def send_no_articles_email() -> None:
-    api_key = os.environ.get("RESEND_API_KEY")
+    api_key = _resend_api_key()
     if not api_key:
-        raise RuntimeError("RESEND_API_KEY is not set.")
+        raise RuntimeError(
+            "RESEND_API_KEY is not set (environment variable or user_resend_api_Key file)."
+        )
 
     resend.api_key = api_key
     from_addr = os.environ.get("RESEND_FROM", DEFAULT_RESEND_FROM)

@@ -9,6 +9,7 @@ Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest pe
 | Path | Role |
 |------|------|
 | `config.py` | User settings: recipient, `SCHEDULE_*`, `PAPERS_PER_DAY`, `INTERESTS`, `SOURCES` (at repository root) |
+| `user_resend_api_Key` | Optional local-only file: paste your Resend API key on one line (gitignored; see `user_resend_api_Key.example`) |
 | `src/lazypaper/` | Python package: `main.py`, `fetcher.py`, `scorer.py`, `emailer.py`, `cfg.py` (loads root `config.py`) |
 | `src/lazypaper/__main__.py` | Entry for `python -m lazypaper` |
 | `sent_articles.json` | Tracked at repo root; updated by the Actions workflows after a send |
@@ -21,8 +22,10 @@ Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest pe
 1. A public GitHub repository named **lazypaper** (push this folder to it).
 2. A [Resend](https://resend.com) account and API key.
 3. GitHub Actions secrets on the repo:
-   - **`RESEND_API_KEY`** — required.
+   - **`RESEND_API_KEY`** — required for scheduled runs in GitHub.
    - **`RESEND_FROM`** — optional. Verified sender like `LazyPaper <papers@yourdomain.com>`. If omitted, the default in `config.py` is used (Resend’s onboarding address only works for testing to your own inbox).
+
+For **local runs**, you can either set `export RESEND_API_KEY=re_...` or copy `user_resend_api_Key.example` to **`user_resend_api_Key`** in the repo root and put your key alone on the first non-comment line (that file is gitignored).
 
 ## Schedule
 
@@ -54,7 +57,8 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export PYTHONPATH=src
-export RESEND_API_KEY=re_...
+# Either: export RESEND_API_KEY=re_...
+# Or: create user_resend_api_Key (see user_resend_api_Key.example)
 # optional: export RESEND_FROM='LazyPaper <onboarding@resend.dev>'
 python -m lazypaper
 ```
