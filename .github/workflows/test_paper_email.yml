@@ -1,16 +1,14 @@
-name: Daily paper email
+# Manual: Actions → "Run workflow", or: gh workflow run test_paper_email.yml
+name: Test paper email
 
 on:
-  schedule:
-    # 04:00 NZST (UTC+12) ≈ 16:00 UTC previous calendar day. During NZDT (UTC+13), same UTC time is 05:00 local.
-    - cron: "0 16 * * *"
   workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  send-paper:
+  send-test:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +20,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Run lazypaper
+      - name: Send one paper email
         env:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_FROM: ${{ secrets.RESEND_FROM }}
