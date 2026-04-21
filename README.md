@@ -13,6 +13,7 @@ Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest pe
 | `src/lazypaper/__main__.py` | Entry for `python -m lazypaper` |
 | `sent_articles.json` | Tracked at repo root; updated by the Actions workflows after a send |
 | `requirements.txt` | Pip dependencies (run from repo root) |
+| `scripts/check_domains.py` | DNS checks for mail domains and RSS/API hosts (runs in GitHub Actions before send) |
 | `.github/workflows/daily_email.yml` | Scheduled run (and optional manual); the `on.schedule` `cron` must match `SCHEDULE_CRON` in the root `config.py` |
 | `.github/workflows/test_paper_email.yml` | Manual “test email” run only |
 
@@ -39,6 +40,8 @@ gh workflow run test_paper_email.yml
 ```
 
 You can also use **Actions → Daily paper email → Run workflow**; it does the same job on demand.
+
+Before each send, workflows run **`scripts/check_domains.py`**, which checks that recipient/`from` email domains have MX (or A/AAAA as implicit MX) and that every RSS/API hostname in `SOURCES` resolves. If something fails, the job stops with a short message pointing at `config.py` or secrets (`RESEND_FROM`, `LAZYPAPER_TO`). You can run the same check locally after `pip install -r requirements.txt`: `python scripts/check_domains.py` (optional env vars as in CI).
 
 ## Customise
 
