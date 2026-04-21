@@ -6,8 +6,32 @@ import html
 import os
 
 import resend
+from resend.exceptions import ResendError
 
 from .cfg import DEFAULT_RESEND_FROM, RECIPIENT_EMAIL
+
+
+def _send_with_friendly_errors(params: dict) -> None:
+    try:
+        resend.Emails.send(params)
+    except ResendError as e:
+        msg = str(e) or type(e).__name__
+        from_addr = params.get("from", "")
+        to_addrs = ", ".join(params.get("to", []) or [])
+        hint = ""
+        lower = msg.lower()
+        if "domain" in lower and "invalid" in lower:
+            hint = (
+                "\nThis usually means Resend does not accept the 'From' domain for this account. "
+                "Fix by either:\n"
+                "  1) Verify your own domain in the Resend dashboard (Domains -> Add), add its "
+                "DNS records, then set RESEND_FROM to 'Your Name <you@your-verified-domain>'; or\n"
+                "  2) Keep the sandbox sender onboarding@resend.dev and make sure RECIPIENT_EMAIL "
+                "(or LAZYPAPER_TO) is the same email you signed up to Resend with."
+            )
+        raise RuntimeError(
+            f"Resend rejected the message (from={from_addr!r}, to=[{to_addrs}]): {msg}{hint}"
+        ) from e
 
 
 def _article_html_section(article: dict[str, str]) -> str:
@@ -66,7 +90,7 @@ def send_articles_email(articles: list[dict[str, str]]) -> None:
         "html": build_html_digest(articles),
     }
 
-    resend.Emails.send(params)
+    _send_with_friendly_errors(params)
 
 
 def send_no_articles_email() -> None:
@@ -81,7 +105,7 @@ def send_no_articles_email() -> None:
         "ones already sent. Try adding feeds in <code>config.py</code> or trimming "
         "<code>sent_articles.json</code>.</p>"
     )
-    resend.Emails.send(
+    _send_with_friendly_errors(
         {
             "from": from_addr,
             "to": [os.environ.get("LAZYPAPER_TO", RECIPIENT_EMAIL)],

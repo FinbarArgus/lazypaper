@@ -1,6 +1,6 @@
 """Edit INTERESTS, schedule, and SOURCES here."""
 
-RECIPIENT_EMAIL = "finbar.argus@auckland.ac.nz"
+RECIPIENT_EMAIL = "farg967@aucklanduni.ac.nz"
 
 # When to run the daily email in GitHub Actions: minute and hour in **UTC** (0–59 / 0–23).
 # Example: 16, 0 → 16:00 UTC, which is 04:00 the same calendar day in NZST (UTC+12) or

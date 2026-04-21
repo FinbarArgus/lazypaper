@@ -185,19 +185,30 @@ def main() -> int:
         )
         return 1
 
-    from_emails: list[str] = []
-    from_emails.extend(_from_header_addresses(config.DEFAULT_RESEND_FROM))
-    if os.environ.get("RESEND_FROM", "").strip():
-        from_emails.extend(_from_header_addresses(os.environ["RESEND_FROM"]))
-    from_only_domains = {_domain_from_email(e) for e in from_emails if _domain_from_email(e)}
-    if any(d != "resend.dev" for d in from_only_domains):
-        print(
-            "\nNOTE: Custom From domains must be verified in your Resend dashboard "
-            "(DNS checks here are necessary but not sufficient to send).",
-            file=sys.stderr,
-        )
+    rf_env = os.environ.get("RESEND_FROM", "").strip()
+    effective_from_header = rf_env or config.DEFAULT_RESEND_FROM
+    from_emails = _from_header_addresses(effective_from_header)
+    from_domain = _domain_from_email(from_emails[0]) if from_emails else None
+
+    recipient_addr = (os.environ.get("LAZYPAPER_TO") or config.RECIPIENT_EMAIL or "").strip()
 
     print("\nAll domain checks passed.")
+
+    sys.stdout.flush()
+    if from_domain == "resend.dev":
+        print(
+            "\nWARNING: 'From' still uses the Resend sandbox sender (resend.dev).\n"
+            "Resend only accepts this sender when the recipient equals the email on your "
+            "Resend account;\nsending to any other address will fail with 'The domain is invalid'.\n"
+            "Verify your own domain in Resend, then set the RESEND_FROM secret to "
+            "'Your Name <you@your-verified-domain>'.\n"
+            f"Current recipient: {recipient_addr or '(unset)'}"
+        )
+    elif from_domain:
+        print(
+            "\nNOTE: Custom From domains must be verified in your Resend dashboard "
+            "(DNS checks here are necessary but not sufficient to send)."
+        )
     return 0
 
 

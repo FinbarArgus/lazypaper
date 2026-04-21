@@ -21,9 +21,10 @@ Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest pe
 
 1. A public GitHub repository named **lazypaper** (push this folder to it).
 2. A [Resend](https://resend.com) account and API key.
-3. GitHub Actions secrets on the repo:
+3. **A Resend-verified sending domain.** In the Resend dashboard, **Domains → Add Domain**, then add the SPF/DKIM DNS records they show and wait for verification. Without this, sending to any address that isn't the email you registered with Resend will fail with `The domain is invalid`.
+4. GitHub Actions secrets on the repo:
    - **`RESEND_API_KEY`** — required.
-   - **`RESEND_FROM`** — optional. Verified sender like `LazyPaper <papers@yourdomain.com>`. If omitted, the default in `config.py` is used (Resend’s onboarding address only works for testing to your own inbox).
+   - **`RESEND_FROM`** — strongly recommended. Use a sender on your verified domain, e.g. `LazyPaper <papers@yourdomain.com>`. If omitted, `config.py`'s default `LazyPaper <onboarding@resend.dev>` is used, which **only works when the recipient equals the email you signed up to Resend with**.
 
 ## Schedule
 
@@ -41,7 +42,13 @@ gh workflow run test_paper_email.yml
 
 You can also use **Actions → Daily paper email → Run workflow**; it does the same job on demand.
 
-Before each send, workflows run **`scripts/check_domains.py`**, which checks that recipient/`from` email domains have MX (or A/AAAA as implicit MX) and that every RSS/API hostname in `SOURCES` resolves. If something fails, the job stops with a short message pointing at `config.py` or secrets (`RESEND_FROM`, `LAZYPAPER_TO`). You can run the same check locally after `pip install -r requirements.txt`: `python scripts/check_domains.py` (optional env vars as in CI).
+Before each send, workflows run **`scripts/check_domains.py`**, which checks that recipient/`from` email domains have MX (or A/AAAA as implicit MX) and that every RSS/API hostname in `SOURCES` resolves. If something fails, the job stops with a short message pointing at `config.py` or secrets (`RESEND_FROM`, `LAZYPAPER_TO`). It also prints a warning if `From` is still Resend's sandbox `onboarding@resend.dev`, because that path will hit the Resend error below unless the recipient matches your Resend account email. You can run the same check locally after `pip install -r requirements.txt`: `python scripts/check_domains.py` (optional env vars as in CI).
+
+## Troubleshooting
+
+- **`resend.exceptions.ValidationError: The domain is invalid`** — Resend refused the `From` address. Either verify your own domain in the Resend dashboard and set the **`RESEND_FROM`** secret to a sender on that domain (e.g. `LazyPaper <news@your-domain.com>`), or make sure the recipient (`RECIPIENT_EMAIL` in `config.py`, or the `LAZYPAPER_TO` secret/env var) is exactly the email you registered with Resend and leave the default `onboarding@resend.dev` sender.
+- **`RESEND_API_KEY is not set`** — Add the `RESEND_API_KEY` GitHub Actions secret (and/or `export` it locally).
+- **DNS/feed errors printed by `scripts/check_domains.py`** — Fix the offending RSS URL in `SOURCES` or the email in `config.py` / the secret it names.
 
 ## Customise
 
