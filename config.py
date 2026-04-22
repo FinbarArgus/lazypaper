@@ -63,6 +63,42 @@ SOURCES: list[dict[str, str]] = [
         "journal": "AJP Heart and Circulatory Physiology",
         "rss": "https://journals.physiology.org/action/showFeed?type=etoc&feed=rss&jc=ajpheart",
     },
+    {
+        "journal": "Europe PMC (General Physiology)",
+        "europepmc_query": '(physiology OR "cardiovascular physiology" OR "autonomic neuroscience") AND SRC:MED',
+    },
+    {
+        "journal": "Europe PMC (Neuroscience)",
+        "europepmc_query": '(neuroscience OR neurophysiology OR "autonomic nervous system") AND SRC:MED',
+    },
+    {
+        "journal": "Europe PMC (Math/Comp Bio)",
+        "europepmc_query": '("mathematical model" OR "systems biology" OR "parameter estimation" OR "identifiability") AND SRC:MED',
+    },
+    {
+        "journal": "Europe PMC (Biomechanics/Hemodynamics)",
+        "europepmc_query": '(microvasculature OR hemodynamics OR "blood flow") AND SRC:MED',
+    },
+    {
+        "journal": "Europe PMC (Cardiovascular + Hemodynamics)",
+        "europepmc_query": '("cardiovascular physiology" OR hemodynamics OR "blood flow" OR microvasculature) AND SRC:MED',
+    },
+    {
+        "journal": "Europe PMC (Autonomic + Neurophysiology)",
+        "europepmc_query": '("autonomic nervous system" OR "autonomic neuroscience" OR neurophysiology) AND SRC:MED',
+    },
+    {
+        "journal": "Europe PMC (UQ + Parameter Estimation)",
+        "europepmc_query": '("uncertainty quantification" OR "parameter estimation" OR identifiability OR Bayesian) AND SRC:MED',
+    },
+    {
+        "journal": "Europe PMC (Systems/Math Biology)",
+        "europepmc_query": '("systems biology" OR "mathematical biology" OR "mathematical model" OR "computational biology") AND SRC:MED',
+    },
+    {
+        "journal": "Europe PMC (Mechanistic Modeling)",
+        "europepmc_query": '("mechanistic model" OR "differential equation" OR "inverse problem") AND SRC:MED',
+    },
 ]
 
 # Softmax temperature for weighted random pick (lower = more greedy).

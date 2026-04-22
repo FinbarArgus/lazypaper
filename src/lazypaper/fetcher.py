@@ -198,84 +198,171 @@ def _xml_child_text(parent: ET.Element, name: str) -> str:
     return ""
 
 
-def _fetch_europepmc_articles(journal: str, query: str, page_size: int = 50) -> list[dict[str, str]]:
-    """Recent articles from Europe PMC search API (XML)."""
-    url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
-    params = {
-        "query": query,
-        "resultType": "core",
-        "pageSize": str(page_size),
-        "format": "xml",
-    }
-    try:
-        r = _session().get(
-            url,
-            params=params,
-            timeout=45,
-            headers={
-                "User-Agent": USER_AGENT,
-                "Accept": "application/xml",
-            },
-        )
-        r.raise_for_status()
-    except requests.RequestException as e:
-        logger.warning("Europe PMC fetch failed (%s): %s", query, e)
-        return []
+def _europepmc_article(
+    *,
+    journal: str,
+    title: str,
+    doi: str,
+    pmid: str,
+    abstract: str,
+    authors: str,
+    published: str,
+    citations_raw: Any,
+    page_info: str,
+    keywords: str,
+) -> dict[str, str] | None:
+    link = f"https://doi.org/{doi}" if doi else ""
+    if not link and pmid:
+        link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
+    if not link:
+        return None
 
     try:
-        root = ET.fromstring(r.text)
-    except ET.ParseError as e:
-        logger.warning("Europe PMC XML parse error (%s): %s", query, e)
+        citations = str(max(0, int(citations_raw)))
+    except (ValueError, TypeError):
+        citations = "0"
+
+    page_count = "0"
+    if page_info:
+        m = re.fullmatch(r"(\d+)\s*-\s*(\d+)", page_info.strip())
+        if m:
+            start, end = int(m.group(1)), int(m.group(2))
+            page_count = str(max(0, end - start + 1))
+
+    return {
+        "id": link,
+        "title": title or "(no title)",
+        "abstract": abstract,
+        "keywords": keywords,
+        "authors": authors,
+        "published": published,
+        "journal": journal,
+        "link": link,
+        "citations": citations,
+        "page_count": page_count,
+    }
+
+
+def _parse_europepmc_xml(journal: str, raw_xml: str) -> list[dict[str, str]]:
+    try:
+        root = ET.fromstring(raw_xml)
+    except ET.ParseError:
         return []
 
     out: list[dict[str, str]] = []
     for el in root.iter():
         if _xml_localname(el.tag) != "result":
             continue
-        title = _xml_child_text(el, "title") or "(no title)"
-        doi = _xml_child_text(el, "doi")
-        link = f"https://doi.org/{doi}" if doi else ""
-        if not link:
-            pmid = _xml_child_text(el, "pmid")
-            if pmid:
-                link = f"https://pubmed.ncbi.nlm.nih.gov/{pmid}/"
-        if not link:
-            continue
-        abstract = _xml_child_text(el, "abstractText")
-        authors = _xml_child_text(el, "authorString")
-        published = _xml_child_text(el, "firstPublicationDate")
-        keywords = _europepmc_mesh_keywords_text(el)
 
-        citations_raw = _xml_child_text(el, "citedByCount")
-        try:
-            citations = str(max(0, int(citations_raw)))
-        except (ValueError, TypeError):
-            citations = "0"
-
-        page_info = _xml_child_text(el, "pageInfo")
-        page_count = "0"
-        if page_info:
-            import re as _re
-            m = _re.fullmatch(r"(\d+)\s*-\s*(\d+)", page_info.strip())
-            if m:
-                start, end = int(m.group(1)), int(m.group(2))
-                page_count = str(max(0, end - start + 1))
-
-        out.append(
-            {
-                "id": link,
-                "title": title,
-                "abstract": abstract,
-                "keywords": keywords,
-                "authors": authors,
-                "published": published,
-                "journal": journal,
-                "link": link,
-                "citations": citations,
-                "page_count": page_count,
-            }
+        article = _europepmc_article(
+            journal=journal,
+            title=_xml_child_text(el, "title"),
+            doi=_xml_child_text(el, "doi"),
+            pmid=_xml_child_text(el, "pmid"),
+            abstract=_xml_child_text(el, "abstractText"),
+            authors=_xml_child_text(el, "authorString"),
+            published=_xml_child_text(el, "firstPublicationDate"),
+            citations_raw=_xml_child_text(el, "citedByCount"),
+            page_info=_xml_child_text(el, "pageInfo"),
+            keywords=_europepmc_mesh_keywords_text(el),
         )
+        if article:
+            out.append(article)
+
     return out
+
+
+def _parse_europepmc_json(journal: str, payload: Any) -> list[dict[str, str]]:
+    if not isinstance(payload, dict):
+        return []
+
+    result_list = payload.get("resultList")
+    if not isinstance(result_list, dict):
+        return []
+    results = result_list.get("result")
+    if not isinstance(results, list):
+        return []
+
+    out: list[dict[str, str]] = []
+    for result in results:
+        if not isinstance(result, dict):
+            continue
+
+        keyword_parts: list[str] = []
+        keyword_list = result.get("keywordList")
+        if isinstance(keyword_list, dict):
+            kws = keyword_list.get("keyword")
+            if isinstance(kws, list):
+                keyword_parts.extend(str(k).strip() for k in kws if str(k).strip())
+
+        article = _europepmc_article(
+            journal=journal,
+            title=str(result.get("title") or "").strip(),
+            doi=str(result.get("doi") or "").strip(),
+            pmid=str(result.get("pmid") or "").strip(),
+            abstract=str(result.get("abstractText") or "").strip(),
+            authors=str(result.get("authorString") or "").strip(),
+            published=str(result.get("firstPublicationDate") or "").strip(),
+            citations_raw=result.get("citedByCount"),
+            page_info=str(result.get("pageInfo") or "").strip(),
+            keywords=", ".join(keyword_parts),
+        )
+        if article:
+            out.append(article)
+
+    return out
+
+
+def _fetch_europepmc_articles(journal: str, query: str, page_size: int = 50) -> list[dict[str, str]]:
+    """Recent articles from Europe PMC search API with fallback request shapes."""
+    url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+    request_attempts = [
+        ("xml", "core", str(page_size), 45),
+        ("json", "core", "20", 30),
+        ("xml", "core", "20", 30),
+    ]
+    errors: list[str] = []
+
+    for fmt, result_type, size, timeout_s in request_attempts:
+        params = {
+            "query": query,
+            "resultType": result_type,
+            "pageSize": size,
+            "format": fmt,
+        }
+        accept = "application/xml" if fmt == "xml" else "application/json"
+        try:
+            r = _session().get(
+                url,
+                params=params,
+                timeout=timeout_s,
+                headers={
+                    "User-Agent": USER_AGENT,
+                    "Accept": accept,
+                },
+            )
+            r.raise_for_status()
+        except requests.RequestException as e:
+            errors.append(f"{fmt}/pageSize={size}: {e}")
+            continue
+
+        if fmt == "xml":
+            parsed = _parse_europepmc_xml(journal, r.text)
+        else:
+            try:
+                payload = r.json()
+            except ValueError as e:
+                errors.append(f"json/pageSize={size} parse error: {e}")
+                continue
+            parsed = _parse_europepmc_json(journal, payload)
+
+        if parsed:
+            return parsed
+        errors.append(f"{fmt}/pageSize={size}: empty results")
+
+    if errors:
+        logger.warning("Europe PMC fetch failed (%s): %s", query, " | ".join(errors))
+    return []
 
 
 def _fetch_feed_xml(url: str) -> str | None:
