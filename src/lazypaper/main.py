@@ -56,8 +56,9 @@ def _dedupe_articles(articles: list[dict[str, str]]) -> list[dict[str, str]]:
 
 def main() -> int:
     sent = load_sent_ids()
+    daily = _resolve_daily(DAILY_SCHEDULE)
     logger.info("Fetching feeds…")
-    raw = fetch_all_articles()
+    raw = fetch_all_articles(year_min=daily["year_min"], year_max=daily["year_max"])
     articles = _dedupe_articles(raw)
     logger.info("Collected %s unique articles from feeds", len(articles))
     candidates = filter_unsent(articles, sent)
@@ -71,7 +72,6 @@ def main() -> int:
             len(candidates),
         )
 
-    daily = _resolve_daily(DAILY_SCHEDULE)
     before_yr = len(candidates)
     candidates = filter_by_year_range(candidates, daily["year_min"], daily["year_max"])
     if before_yr > len(candidates):

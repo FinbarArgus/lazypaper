@@ -185,6 +185,24 @@ def _openalex_citation_count_for_doi(doi: str) -> int | None:
     return None
 
 
+def _parse_year_from_published(published: str) -> int:
+    m = re.search(r"\b(19|20)\d{2}\b", published or "")
+    return int(m.group()) if m else 0
+
+
+def _in_year_range(article: dict[str, str], year_min: int | None, year_max: int | None) -> bool:
+    if year_min is None and year_max is None:
+        return True
+    year = _parse_year_from_published(article.get("published", ""))
+    if year == 0:
+        return False
+    if year_min is not None and year < year_min:
+        return False
+    if year_max is not None and year > year_max:
+        return False
+    return True
+
+
 def _xml_localname(tag: str) -> str:
     if tag.startswith("{") and "}" in tag:
         return tag.split("}", 1)[1]
@@ -313,7 +331,15 @@ def _parse_europepmc_json(journal: str, payload: Any) -> list[dict[str, str]]:
     return out
 
 
-def _fetch_europepmc_articles(journal: str, query: str, page_size: int = 50) -> list[dict[str, str]]:
+def _fetch_europepmc_articles(
+    journal: str,
+    query: str,
+    page_size: int = 50,
+    *,
+    max_pages: int = 3,
+    year_min: int | None = None,
+    year_max: int | None = None,
+) -> list[dict[str, str]]:
     """Recent articles from Europe PMC search API with fallback request shapes."""
     url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
     request_attempts = [
@@ -324,41 +350,60 @@ def _fetch_europepmc_articles(journal: str, query: str, page_size: int = 50) -> 
     errors: list[str] = []
 
     for fmt, result_type, size, timeout_s in request_attempts:
-        params = {
-            "query": query,
-            "resultType": result_type,
-            "pageSize": size,
-            "format": fmt,
-        }
         accept = "application/xml" if fmt == "xml" else "application/json"
-        try:
-            r = _session().get(
-                url,
-                params=params,
-                timeout=timeout_s,
-                headers={
-                    "User-Agent": USER_AGENT,
-                    "Accept": accept,
-                },
-            )
-            r.raise_for_status()
-        except requests.RequestException as e:
-            errors.append(f"{fmt}/pageSize={size}: {e}")
-            continue
+        combined: list[dict[str, str]] = []
+        seen: set[str] = set()
 
-        if fmt == "xml":
-            parsed = _parse_europepmc_xml(journal, r.text)
-        else:
+        for page in range(1, max_pages + 1):
+            params = {
+                "query": query,
+                "resultType": result_type,
+                "pageSize": size,
+                "format": fmt,
+                "page": str(page),
+            }
             try:
-                payload = r.json()
-            except ValueError as e:
-                errors.append(f"json/pageSize={size} parse error: {e}")
-                continue
-            parsed = _parse_europepmc_json(journal, payload)
+                r = _session().get(
+                    url,
+                    params=params,
+                    timeout=timeout_s,
+                    headers={
+                        "User-Agent": USER_AGENT,
+                        "Accept": accept,
+                    },
+                )
+                r.raise_for_status()
+            except requests.RequestException as e:
+                errors.append(f"{fmt}/pageSize={size}/page={page}: {e}")
+                break
 
-        if parsed:
-            return parsed
-        errors.append(f"{fmt}/pageSize={size}: empty results")
+            if fmt == "xml":
+                parsed = _parse_europepmc_xml(journal, r.text)
+            else:
+                try:
+                    payload = r.json()
+                except ValueError as e:
+                    errors.append(f"json/pageSize={size}/page={page} parse error: {e}")
+                    break
+                parsed = _parse_europepmc_json(journal, payload)
+
+            if not parsed:
+                if page == 1:
+                    errors.append(f"{fmt}/pageSize={size}: empty results")
+                break
+
+            for article in parsed:
+                if not _in_year_range(article, year_min, year_max):
+                    continue
+                aid = article.get("id", "")
+                if aid and aid in seen:
+                    continue
+                if aid:
+                    seen.add(aid)
+                combined.append(article)
+
+        if combined:
+            return combined
 
     if errors:
         logger.warning("Europe PMC fetch failed (%s): %s", query, " | ".join(errors))
@@ -382,12 +427,22 @@ def _fetch_feed_xml(url: str) -> str | None:
         return None
 
 
-def fetch_articles_for_source(source: dict[str, str]) -> list[dict[str, str]]:
+def fetch_articles_for_source(
+    source: dict[str, str],
+    *,
+    year_min: int | None = None,
+    year_max: int | None = None,
+) -> list[dict[str, str]]:
     """Return normalised article dicts for a single entry in the same shape as :func:`fetch_all_articles`."""
     out: list[dict[str, str]] = []
     journal = source["journal"]
     if source.get("europepmc_query"):
-        return _fetch_europepmc_articles(journal, str(source["europepmc_query"]))
+        return _fetch_europepmc_articles(
+            journal,
+            str(source["europepmc_query"]),
+            year_min=year_min,
+            year_max=year_max,
+        )
 
     url = source["rss"]
     xml = _fetch_feed_xml(url)
@@ -445,9 +500,9 @@ def fetch_articles_for_source(source: dict[str, str]) -> list[dict[str, str]]:
     return out
 
 
-def fetch_all_articles() -> list[dict[str, str]]:
+def fetch_all_articles(*, year_min: int | None = None, year_max: int | None = None) -> list[dict[str, str]]:
     """Return normalised article dicts from all configured feeds."""
     out: list[dict[str, str]] = []
     for source in SOURCES:
-        out.extend(fetch_articles_for_source(source))
+        out.extend(fetch_articles_for_source(source, year_min=year_min, year_max=year_max))
     return out
