@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import logging
+import math
 import re
+from datetime import datetime, timezone
 import xml.etree.ElementTree as ET
 from typing import Any
 
@@ -19,6 +21,8 @@ logger = logging.getLogger(__name__)
 
 _DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.IGNORECASE)
 _UNKNOWN_CITATIONS_DEFAULT = 10
+_EUROPEPMC_MAX_PAGE = 10
+_EUROPEPMC_PAGE_WINDOW = 3
 
 # Many publisher CDNs return 403 to non-browser user agents; identify as a normal feed client.
 USER_AGENT = (
@@ -203,6 +207,61 @@ def _in_year_range(article: dict[str, str], year_min: int | None, year_max: int 
     return True
 
 
+def _stable_rotation_seed(*parts: str) -> int:
+    seed = 0
+    for part in parts:
+        for ch in part:
+            seed = (seed * 131 + ord(ch)) % 2_147_483_647
+    return seed
+
+
+def _europepmc_start_page(total_hits: int, page_size: int, query: str) -> int:
+    if total_hits <= 0 or page_size <= 0:
+        return 1
+    total_pages = max(1, math.ceil(total_hits / page_size))
+    capped_pages = min(_EUROPEPMC_MAX_PAGE, total_pages)
+    # Rotate deterministically across days and queries to avoid repeatedly consuming page 1.
+    day_of_year = datetime.now(timezone.utc).timetuple().tm_yday
+    seed = _stable_rotation_seed(query, str(day_of_year))
+    return 1 + (seed % capped_pages)
+
+
+def _fetch_europepmc_page(
+    *,
+    url: str,
+    query: str,
+    result_type: str,
+    size: str,
+    fmt: str,
+    accept: str,
+    timeout_s: int,
+    page: int,
+) -> tuple[list[dict[str, str]], int]:
+    params = {
+        "query": query,
+        "resultType": result_type,
+        "pageSize": size,
+        "format": fmt,
+        "page": str(page),
+    }
+    r = _session().get(
+        url,
+        params=params,
+        timeout=timeout_s,
+        headers={
+            "User-Agent": USER_AGENT,
+            "Accept": accept,
+        },
+    )
+    r.raise_for_status()
+
+    if fmt == "xml":
+        return _parse_europepmc_xml(journal="", raw_xml=r.text)
+
+    payload = r.json()
+    return _parse_europepmc_json(journal="", payload=payload)
+
+
 def _xml_localname(tag: str) -> str:
     if tag.startswith("{") and "}" in tag:
         return tag.split("}", 1)[1]
@@ -261,11 +320,20 @@ def _europepmc_article(
     }
 
 
-def _parse_europepmc_xml(journal: str, raw_xml: str) -> list[dict[str, str]]:
+def _parse_europepmc_xml(journal: str, raw_xml: str) -> tuple[list[dict[str, str]], int]:
     try:
         root = ET.fromstring(raw_xml)
     except ET.ParseError:
-        return []
+        return [], 0
+
+    hit_count = 0
+    for el in root.iter():
+        if _xml_localname(el.tag) == "hitCount":
+            try:
+                hit_count = int((el.text or "").strip())
+            except ValueError:
+                hit_count = 0
+            break
 
     out: list[dict[str, str]] = []
     for el in root.iter():
@@ -287,19 +355,24 @@ def _parse_europepmc_xml(journal: str, raw_xml: str) -> list[dict[str, str]]:
         if article:
             out.append(article)
 
-    return out
+    return out, hit_count
 
 
-def _parse_europepmc_json(journal: str, payload: Any) -> list[dict[str, str]]:
+def _parse_europepmc_json(journal: str, payload: Any) -> tuple[list[dict[str, str]], int]:
     if not isinstance(payload, dict):
-        return []
+        return [], 0
+
+    try:
+        hit_count = int(payload.get("hitCount") or 0)
+    except (TypeError, ValueError):
+        hit_count = 0
 
     result_list = payload.get("resultList")
     if not isinstance(result_list, dict):
-        return []
+        return [], hit_count
     results = result_list.get("result")
     if not isinstance(results, list):
-        return []
+        return [], hit_count
 
     out: list[dict[str, str]] = []
     for result in results:
@@ -328,7 +401,7 @@ def _parse_europepmc_json(journal: str, payload: Any) -> list[dict[str, str]]:
         if article:
             out.append(article)
 
-    return out
+    return out, hit_count
 
 
 def _fetch_europepmc_articles(
@@ -336,7 +409,6 @@ def _fetch_europepmc_articles(
     query: str,
     page_size: int = 50,
     *,
-    max_pages: int = 3,
     year_min: int | None = None,
     year_max: int | None = None,
 ) -> list[dict[str, str]]:
@@ -353,39 +425,107 @@ def _fetch_europepmc_articles(
         accept = "application/xml" if fmt == "xml" else "application/json"
         combined: list[dict[str, str]] = []
         seen: set[str] = set()
+        page_size_int = int(size)
 
-        for page in range(1, max_pages + 1):
-            params = {
-                "query": query,
-                "resultType": result_type,
-                "pageSize": size,
-                "format": fmt,
-                "page": str(page),
-            }
-            try:
-                r = _session().get(
+        try:
+            if fmt == "xml":
+                probe_resp = _session().get(
                     url,
-                    params=params,
+                    params={
+                        "query": query,
+                        "resultType": result_type,
+                        "pageSize": size,
+                        "format": fmt,
+                        "page": "1",
+                    },
                     timeout=timeout_s,
                     headers={
                         "User-Agent": USER_AGENT,
                         "Accept": accept,
                     },
                 )
-                r.raise_for_status()
-            except requests.RequestException as e:
-                errors.append(f"{fmt}/pageSize={size}/page={page}: {e}")
-                break
+                probe_resp.raise_for_status()
+                probe_parsed, hit_count = _parse_europepmc_xml(journal, probe_resp.text)
+            else:
+                probe_resp = _session().get(
+                    url,
+                    params={
+                        "query": query,
+                        "resultType": result_type,
+                        "pageSize": size,
+                        "format": fmt,
+                        "page": "1",
+                    },
+                    timeout=timeout_s,
+                    headers={
+                        "User-Agent": USER_AGENT,
+                        "Accept": accept,
+                    },
+                )
+                probe_resp.raise_for_status()
+                try:
+                    probe_payload = probe_resp.json()
+                except ValueError as e:
+                    errors.append(f"json/pageSize={size}/page=1 parse error: {e}")
+                    continue
+                probe_parsed, hit_count = _parse_europepmc_json(journal, probe_payload)
+        except requests.RequestException as e:
+            errors.append(f"{fmt}/pageSize={size}/page=1: {e}")
+            continue
 
-            if fmt == "xml":
-                parsed = _parse_europepmc_xml(journal, r.text)
+        start_page = _europepmc_start_page(hit_count, page_size_int, query)
+        end_page = min(_EUROPEPMC_MAX_PAGE, start_page + _EUROPEPMC_PAGE_WINDOW - 1)
+        pages_to_fetch = list(range(start_page, end_page + 1))
+
+        for page in pages_to_fetch:
+            if page == 1:
+                parsed = probe_parsed
             else:
                 try:
-                    payload = r.json()
-                except ValueError as e:
-                    errors.append(f"json/pageSize={size}/page={page} parse error: {e}")
+                    if fmt == "xml":
+                        page_resp = _session().get(
+                            url,
+                            params={
+                                "query": query,
+                                "resultType": result_type,
+                                "pageSize": size,
+                                "format": fmt,
+                                "page": str(page),
+                            },
+                            timeout=timeout_s,
+                            headers={
+                                "User-Agent": USER_AGENT,
+                                "Accept": accept,
+                            },
+                        )
+                        page_resp.raise_for_status()
+                        parsed, _ = _parse_europepmc_xml(journal, page_resp.text)
+                    else:
+                        page_resp = _session().get(
+                            url,
+                            params={
+                                "query": query,
+                                "resultType": result_type,
+                                "pageSize": size,
+                                "format": fmt,
+                                "page": str(page),
+                            },
+                            timeout=timeout_s,
+                            headers={
+                                "User-Agent": USER_AGENT,
+                                "Accept": accept,
+                            },
+                        )
+                        page_resp.raise_for_status()
+                        try:
+                            page_payload = page_resp.json()
+                        except ValueError as e:
+                            errors.append(f"json/pageSize={size}/page={page} parse error: {e}")
+                            break
+                        parsed, _ = _parse_europepmc_json(journal, page_payload)
+                except requests.RequestException as e:
+                    errors.append(f"{fmt}/pageSize={size}/page={page}: {e}")
                     break
-                parsed = _parse_europepmc_json(journal, payload)
 
             if not parsed:
                 if page == 1:

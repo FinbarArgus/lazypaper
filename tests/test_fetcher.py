@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from datetime import datetime
 from types import SimpleNamespace
 
 import lazypaper.fetcher as fetcher
@@ -56,3 +57,54 @@ def test_fetch_articles_for_source_defaults_to_10_when_unresolved(monkeypatch) -
 
     assert len(articles) == 1
     assert articles[0]["citations"] == "10"
+
+
+def test_europepmc_start_page_respects_fixed_cap_of_10(monkeypatch) -> None:
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 4, 23, tzinfo=tz)
+
+    monkeypatch.setattr(fetcher, "datetime", _FakeDatetime)
+
+    # 10,000 hits at page size 20 implies many pages, but the cap must keep start page in 1..10.
+    start = fetcher._europepmc_start_page(total_hits=10_000, page_size=20, query="test-query")
+    assert 1 <= start <= 10
+
+
+def test_europepmc_start_page_is_deterministic_for_same_day(monkeypatch) -> None:
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 4, 23, tzinfo=tz)
+
+    monkeypatch.setattr(fetcher, "datetime", _FakeDatetime)
+
+    first = fetcher._europepmc_start_page(total_hits=250, page_size=20, query="abc")
+    second = fetcher._europepmc_start_page(total_hits=250, page_size=20, query="abc")
+    assert first == second
+
+
+def test_europepmc_start_page_changes_with_query(monkeypatch) -> None:
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 4, 23, tzinfo=tz)
+
+    monkeypatch.setattr(fetcher, "datetime", _FakeDatetime)
+
+    first = fetcher._europepmc_start_page(total_hits=250, page_size=20, query="abc")
+    second = fetcher._europepmc_start_page(total_hits=250, page_size=20, query="xyz")
+    assert 1 <= first <= 10
+    assert 1 <= second <= 10
+
+
+def test_europepmc_start_page_returns_1_for_small_result_set(monkeypatch) -> None:
+    class _FakeDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 4, 23, tzinfo=tz)
+
+    monkeypatch.setattr(fetcher, "datetime", _FakeDatetime)
+
+    assert fetcher._europepmc_start_page(total_hits=15, page_size=20, query="abc") == 1
