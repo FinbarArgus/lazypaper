@@ -1,5 +1,5 @@
 -- Lazypaper: store of articles already emailed (one row per recipient + article_id).
--- Run once in Neon, Supabase SQL editor, or psql.
+-- Run once in Neon’s SQL editor (or any PostgreSQL client).
 --
 -- user_key: stores RECIPIENT_EMAIL from config.py (one namespace per recipient; many users can share one DB).
 

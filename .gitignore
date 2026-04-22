@@ -5,6 +5,3 @@ venv/
 .env
 *.egg-info/
 .pytest_cache/
-
-# Local file mode for sent history (when DATABASE_URL is not set)
-sent_articles.json

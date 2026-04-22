@@ -111,9 +111,8 @@ def send_no_articles_email() -> None:
     from_addr = _env_or_default("RESEND_FROM", DEFAULT_RESEND_FROM)
     body = (
         "<p>No new articles were available from the configured feeds after removing "
-        "ones already sent. Try adding feeds in <code>config.py</code>, adjusting "
-        "<code>EXCLUSIONS</code>, or (if you use a local file) trimming "
-        "<code>sent_articles.json</code>.</p>"
+        "ones already sent. Try adding feeds in <code>config.py</code> or adjusting "
+        "<code>EXCLUSIONS</code>.</p>"
     )
     _send_with_friendly_errors(
         {

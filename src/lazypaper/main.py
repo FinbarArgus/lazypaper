@@ -43,12 +43,11 @@ def _dedupe_articles(articles: list[dict[str, str]]) -> list[dict[str, str]]:
 
 
 def main() -> int:
+    sent = load_sent_ids()
     logger.info("Fetching feeds…")
     raw = fetch_all_articles()
     articles = _dedupe_articles(raw)
     logger.info("Collected %s unique articles from feeds", len(articles))
-
-    sent = load_sent_ids()
     candidates = filter_unsent(articles, sent)
     logger.info("%s candidates after removing %s already sent", len(candidates), len(sent))
     before_ex = len(candidates)

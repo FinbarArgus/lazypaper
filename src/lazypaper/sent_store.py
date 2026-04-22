@@ -1,19 +1,16 @@
-"""Load and record which articles were already sent: PostgreSQL (if DATABASE_URL) or sent_articles.json."""
+"""Load and record which articles were already sent: PostgreSQL via DATABASE_URL (e.g. Neon)."""
 
 from __future__ import annotations
 
-import json
 import logging
 import os
 from datetime import datetime, timezone
-from pathlib import Path
+
+import psycopg
 
 from .cfg import RECIPIENT_EMAIL
 
 logger = logging.getLogger(__name__)
-
-REPO_ROOT = Path(__file__).resolve().parent.parent.parent
-SENT_FILE = REPO_ROOT / "sent_articles.json"
 
 
 def partition_key() -> str:
@@ -28,29 +25,17 @@ def _require_partition_key() -> str:
     return k
 
 
-def _using_postgres() -> bool:
-    return bool((os.environ.get("DATABASE_URL") or "").strip())
+def _require_dsn() -> str:
+    dsn = (os.environ.get("DATABASE_URL") or "").strip()
+    if not dsn:
+        raise RuntimeError(
+            "DATABASE_URL is not set. Set it to your Neon PostgreSQL connection string (see README)."
+        )
+    return dsn
 
 
 def load_sent_ids() -> set[str]:
-    if _using_postgres():
-        return _load_sent_ids_postgres()
-    return _load_sent_ids_file()
-
-
-def append_sent(articles: list[dict[str, str]]) -> None:
-    if not articles:
-        return
-    if _using_postgres():
-        _append_sent_postgres(articles)
-    else:
-        _append_sent_file(articles)
-
-
-def _load_sent_ids_postgres() -> set[str]:
-    import psycopg
-
-    dsn = os.environ["DATABASE_URL"].strip()
+    dsn = _require_dsn()
     key = _require_partition_key()
     with psycopg.connect(dsn) as conn:
         with conn.cursor() as cur:
@@ -61,10 +46,11 @@ def _load_sent_ids_postgres() -> set[str]:
             return {str(r[0]) for r in cur.fetchall()}
 
 
-def _append_sent_postgres(articles: list[dict[str, str]]) -> None:
-    import psycopg
+def append_sent(articles: list[dict[str, str]]) -> None:
+    if not articles:
+        return
 
-    dsn = os.environ["DATABASE_URL"].strip()
+    dsn = _require_dsn()
     key = _require_partition_key()
     today = datetime.now(timezone.utc).date()
     with psycopg.connect(dsn) as conn:
@@ -86,41 +72,3 @@ def _append_sent_postgres(articles: list[dict[str, str]]) -> None:
                 )
         conn.commit()
     logger.info("Recorded %s send(s) in PostgreSQL", len(articles))
-
-
-def _load_sent_ids_file() -> set[str]:
-    if not SENT_FILE.exists():
-        return set()
-    try:
-        data = json.loads(SENT_FILE.read_text(encoding="utf-8"))
-    except json.JSONDecodeError:
-        logger.warning("Could not parse %s; treating as empty", SENT_FILE)
-        return set()
-    ids: set[str] = set()
-    for row in data:
-        if isinstance(row, dict) and row.get("id"):
-            ids.add(str(row["id"]))
-    return ids
-
-
-def _append_sent_file(articles: list[dict[str, str]]) -> None:
-    rows: list[dict] = []
-    if SENT_FILE.exists():
-        try:
-            rows = json.loads(SENT_FILE.read_text(encoding="utf-8"))
-        except json.JSONDecodeError:
-            rows = []
-    if not isinstance(rows, list):
-        rows = []
-    today = datetime.now(timezone.utc).date().isoformat()
-    for article in articles:
-        rows.append(
-            {
-                "id": article["id"],
-                "sent_at": today,
-                "title": article.get("title", ""),
-                "journal": article.get("journal", ""),
-            }
-        )
-    SENT_FILE.write_text(json.dumps(rows, indent=2) + "\n", encoding="utf-8")
-    logger.info("Recorded %s send(s) in %s", len(articles), SENT_FILE)
