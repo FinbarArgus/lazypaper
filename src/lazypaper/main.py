@@ -9,10 +9,10 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
 
-from .cfg import INTERESTS, PAPERS_PER_DAY
+from .cfg import EXCLUSIONS, INTERESTS, PAPERS_PER_DAY
 from .emailer import send_articles_email, send_no_articles_email
 from .fetcher import fetch_all_articles
-from .scorer import filter_unsent, pick_articles
+from .scorer import filter_excluded, filter_unsent, pick_articles
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
@@ -96,6 +96,14 @@ def main() -> int:
     sent = load_sent_ids()
     candidates = filter_unsent(articles, sent)
     logger.info("%s candidates after removing %s already sent", len(candidates), len(sent))
+    before_ex = len(candidates)
+    candidates = filter_excluded(candidates, EXCLUSIONS)
+    if before_ex > len(candidates):
+        logger.info(
+            "Excluded %s article(s) matching EXCLUSIONS (abstract/keywords), %s candidates remain",
+            before_ex - len(candidates),
+            len(candidates),
+        )
 
     if not candidates:
         logger.warning("No unsent articles; sending notice email")

@@ -80,3 +80,26 @@ def pick_articles(
 
 def filter_unsent(articles: Iterable[dict[str, str]], sent_ids: set[str]) -> list[dict[str, str]]:
     return [a for a in articles if a.get("id") and a["id"] not in sent_ids]
+
+
+def article_hit_exclusion(article: dict[str, str], exclusions: list[str] | tuple[str, ...] | set[str] | None) -> bool:
+    """True if any exclusion phrase (case-insensitive substring) appears in abstract or keywords."""
+    if not exclusions:
+        return False
+    abstract = (article.get("abstract") or "").lower()
+    keywords = (article.get("keywords") or "").lower()
+    text = f"{abstract} {keywords}"
+    for phrase in exclusions:
+        p = (phrase or "").strip().lower()
+        if p and p in text:
+            return True
+    return False
+
+
+def filter_excluded(articles: Iterable[dict[str, str]], exclusions: list[str] | None) -> list[dict[str, str]]:
+    if not exclusions:
+        return list(articles)
+    ex = [e.strip() for e in exclusions if (e or "").strip()]
+    if not ex:
+        return list(articles)
+    return [a for a in articles if not article_hit_exclusion(a, ex)]

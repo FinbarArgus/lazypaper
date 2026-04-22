@@ -30,6 +30,12 @@ INTERESTS: dict[str, int] = {
     "mathematical biology": 2,
 }
 
+# Phrases: if any appear in the abstract or in feed keyword/tag fields, the article is skipped.
+# Matching is case-insensitive substring match.
+EXCLUSIONS: list[str] = [
+    "Immune system",
+]
+
 # Each entry is one RSS/Atom feed. Add or remove feeds as you like.
 SOURCES: list[dict[str, str]] = [
     {"journal": "Nature (Physiology)", "rss": "https://www.nature.com/subjects/physiology.rss"},

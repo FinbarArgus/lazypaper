@@ -53,6 +53,37 @@ def _entry_authors(entry: Any) -> str:
     return ""
 
 
+def _entry_keywords(entry: Any) -> str:
+    """Tag/category / DC subject text from a feed entry (for EXCLUSIONS matching)."""
+    parts: list[str] = []
+    for t in getattr(entry, "tags", None) or []:
+        if isinstance(t, dict):
+            term = t.get("term") or t.get("label")
+            if term:
+                parts.append(str(term))
+        else:
+            term = getattr(t, "term", None) or getattr(t, "label", None)
+            if term:
+                parts.append(str(term))
+    for attr in ("category", "dc_subject", "subject", "itunes_keywords"):
+        v = getattr(entry, attr, None)
+        if v and isinstance(v, str) and v.strip():
+            parts.append(v.strip())
+    return ", ".join(parts)
+
+
+def _europepmc_mesh_keywords_text(result: ET.Element) -> str:
+    """Mesh / keyword-like strings from a Europe PMC <result> node."""
+    out: list[str] = []
+    for el in result.iter():
+        tag = _xml_localname(el.tag)
+        if tag == "descriptorName" and el.text and el.text.strip():
+            out.append(el.text.strip())
+        if tag in ("keyword",) and el.text and el.text.strip():
+            out.append(el.text.strip())
+    return ", ".join(out)
+
+
 def _entry_summary(entry: Any) -> str:
     for attr in ("summary", "description", "content"):
         val = getattr(entry, attr, None)
@@ -126,12 +157,14 @@ def _fetch_europepmc_articles(journal: str, query: str, page_size: int = 50) -> 
         abstract = _xml_child_text(el, "abstractText")
         authors = _xml_child_text(el, "authorString")
         published = _xml_child_text(el, "firstPublicationDate")
+        keywords = _europepmc_mesh_keywords_text(el)
 
         out.append(
             {
                 "id": link,
                 "title": title,
                 "abstract": abstract,
+                "keywords": keywords,
                 "authors": authors,
                 "published": published,
                 "journal": journal,
@@ -188,6 +221,7 @@ def fetch_all_articles() -> list[dict[str, str]]:
                 continue
             title = _strip_html(getattr(entry, "title", None) or "") or "(no title)"
             abstract = _entry_summary(entry)
+            keywords = _entry_keywords(entry)
             authors = _entry_authors(entry)
             published = ""
             if getattr(entry, "published", None):
@@ -200,6 +234,7 @@ def fetch_all_articles() -> list[dict[str, str]]:
                     "id": link,
                     "title": title,
                     "abstract": abstract,
+                    "keywords": keywords,
                     "authors": authors,
                     "published": published,
                     "journal": journal,
