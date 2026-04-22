@@ -13,8 +13,11 @@ Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest pe
 | `src/lazypaper/__main__.py` | Entry for `python -m lazypaper` |
 | `scripts/schema_sent_postgres.sql` | Create the `sent_article` table (run once in Neon) |
 | `requirements.txt` | Pip dependencies (run from repo root) |
+| `pyproject.toml` | Pytest options (`[tool.pytest]`: `pythonpath`, markers; used locally and in CI) |
+| `tests/` | Network smoke tests and mocked pipeline (see *Tests* below) |
 | `scripts/check_domains.py` | DNS checks for mail domains and RSS/API hosts (runs in GitHub Actions before send) |
-| `.github/workflows/daily_email.yml` | Scheduled run (and optional manual); the `on.schedule` `cron` must match `SCHEDULE_CRON` in the root `config.py` |
+| `.github/workflows/daily_email.yml` | Scheduled run (and optional manual); the `on.schedule` `cron` must match `SCHEDULE_CRON` in the root `config.py` **(does not run pytest)** |
+| `.github/workflows/pytest.yml` | **Tests** — `pytest` on push/PR to `main`/`master`, and manual *Run workflow* |
 | `.github/workflows/test_paper_email.yml` | Manual “test email” run only |
 
 ## What you need
@@ -59,6 +62,10 @@ Before each send, workflows run **`scripts/check_domains.py`**, which checks tha
 
 - **`config.py`** (repository root) — recipient email, **`SCHEDULE_MINUTE_UTC`** and **`SCHEDULE_HOUR_UTC`** (UTC; keep `.github/workflows/daily_email.yml` in sync, see *Schedule* above), **`PAPERS_PER_DAY`** (how many distinct papers in each daily email), `INTERESTS` weights, **`EXCLUSIONS`** (phrases to drop when they appear in the abstract or in keyword/tag data from the feed), `SOURCES`, and `SELECTION_TEMPERATURE` (lower = pick closer to the top score more often in each draw). Each source is either an RSS URL (`rss`) or a Europe PMC search (`europepmc_query`, e.g. `ISSN:1742-5689`) when the publisher feed is unreliable. Values of `PAPERS_PER_DAY` less than 1 are treated as 1.
 - **`LAZYPAPER_TO`** — optional environment variable to override the recipient (defaults to `RECIPIENT_EMAIL` in `config.py`).
+
+## Tests
+
+**GitHub Actions → Tests** (workflow [`pytest.yml`](.github/workflows/pytest.yml)) runs `pytest` on pushes and pull requests to `main` or `master`, and you can run it on demand with **Actions → Tests → Run workflow** (or `gh workflow run pytest.yml` with the [GitHub CLI](https://cli.github.com/)). It is separate from the **Daily paper email** job (the daily schedule does not run the test suite). The tests call your public `SOURCES` over the network and do not send email or use PostgreSQL (the pipeline test mocks the database and Resend path).
 
 ## Local run
 

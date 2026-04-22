@@ -191,54 +191,60 @@ def _fetch_feed_xml(url: str) -> str | None:
         return None
 
 
+def fetch_articles_for_source(source: dict[str, str]) -> list[dict[str, str]]:
+    """Return normalised article dicts for a single entry in the same shape as :func:`fetch_all_articles`."""
+    out: list[dict[str, str]] = []
+    journal = source["journal"]
+    if source.get("europepmc_query"):
+        return _fetch_europepmc_articles(journal, str(source["europepmc_query"]))
+
+    url = source["rss"]
+    xml = _fetch_feed_xml(url)
+    if xml:
+        parsed = feedparser.parse(xml)
+    else:
+        parsed = feedparser.parse(url)
+
+    if getattr(parsed, "bozo", False) and not parsed.entries:
+        logger.warning(
+            "Parse issues for %s (%s): %s",
+            journal,
+            url,
+            getattr(parsed, "bozo_exception", None),
+        )
+
+    for entry in parsed.entries:
+        link = _entry_link(entry)
+        if not link:
+            continue
+        title = _strip_html(getattr(entry, "title", None) or "") or "(no title)"
+        abstract = _entry_summary(entry)
+        keywords = _entry_keywords(entry)
+        authors = _entry_authors(entry)
+        published = ""
+        if getattr(entry, "published", None):
+            published = str(entry.published)
+        elif getattr(entry, "updated", None):
+            published = str(entry.updated)
+
+        out.append(
+            {
+                "id": link,
+                "title": title,
+                "abstract": abstract,
+                "keywords": keywords,
+                "authors": authors,
+                "published": published,
+                "journal": journal,
+                "link": link,
+            }
+        )
+    return out
+
+
 def fetch_all_articles() -> list[dict[str, str]]:
     """Return normalised article dicts from all configured feeds."""
     out: list[dict[str, str]] = []
     for source in SOURCES:
-        journal = source["journal"]
-        if source.get("europepmc_query"):
-            out.extend(_fetch_europepmc_articles(journal, str(source["europepmc_query"])))
-            continue
-
-        url = source["rss"]
-        xml = _fetch_feed_xml(url)
-        if xml:
-            parsed = feedparser.parse(xml)
-        else:
-            parsed = feedparser.parse(url)
-
-        if getattr(parsed, "bozo", False) and not parsed.entries:
-            logger.warning(
-                "Parse issues for %s (%s): %s",
-                journal,
-                url,
-                getattr(parsed, "bozo_exception", None),
-            )
-
-        for entry in parsed.entries:
-            link = _entry_link(entry)
-            if not link:
-                continue
-            title = _strip_html(getattr(entry, "title", None) or "") or "(no title)"
-            abstract = _entry_summary(entry)
-            keywords = _entry_keywords(entry)
-            authors = _entry_authors(entry)
-            published = ""
-            if getattr(entry, "published", None):
-                published = str(entry.published)
-            elif getattr(entry, "updated", None):
-                published = str(entry.updated)
-
-            out.append(
-                {
-                    "id": link,
-                    "title": title,
-                    "abstract": abstract,
-                    "keywords": keywords,
-                    "authors": authors,
-                    "published": published,
-                    "journal": journal,
-                    "link": link,
-                }
-            )
+        out.extend(fetch_articles_for_source(source))
     return out
