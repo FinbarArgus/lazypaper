@@ -93,7 +93,7 @@ DAILY_SCHEDULE: dict = {
     },
     "wednesday": {
         "year_min": 1990,
-        "year_max": None,
+        "year_max": 2020,
         "extra_weights": {"citations": 1, "low_page_count": 2},
     },
     "thursday": {
