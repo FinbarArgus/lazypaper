@@ -99,8 +99,23 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
 export PYTHONPATH=src
-export RESEND_API_KEY=re_...
-# optional: export RESEND_FROM='LazyPaper <onboarding@resend.dev>'
+
+# Option A: put secrets in .env (recommended for local full-pipeline runs)
+cat > .env <<'EOF'
+RESEND_API_KEY=re_...
+RESEND_FROM='LazyPaper <onboarding@resend.dev>'
+# optional: override recipient instead of using RECIPIENT_EMAIL from config.py
+# LAZYPAPER_TO='you@example.com'
+EOF
+
+# Option B: export env vars directly instead of using .env
+# export RESEND_API_KEY=re_...
+# export RESEND_FROM='LazyPaper <onboarding@resend.dev>'
+
+# Optional: run the same domain/feed validation step as CI
+python scripts/check_domains.py
+
+# Full local pipeline run, including real email send if secrets are valid
 python -m lazypaper
 ```
 

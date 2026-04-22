@@ -644,5 +644,8 @@ def fetch_all_articles(*, year_min: int | None = None, year_max: int | None = No
     """Return normalised article dicts from all configured feeds."""
     out: list[dict[str, str]] = []
     for source in SOURCES:
-        out.extend(fetch_articles_for_source(source, year_min=year_min, year_max=year_max))
+        source_articles = fetch_articles_for_source(source, year_min=year_min, year_max=year_max)
+        source_name = str(source.get("journal") or source.get("rss") or source.get("europepmc_query") or "unknown")
+        logger.info("Source %-40s -> %s article(s)", source_name[:40], len(source_articles))
+        out.extend(source_articles)
     return out

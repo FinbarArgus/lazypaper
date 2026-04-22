@@ -15,6 +15,14 @@ import dns.exception
 
 ROOT = Path(__file__).resolve().parent.parent
 CONFIG_PATH = ROOT / "config.py"
+SRC_PATH = ROOT / "src"
+
+if str(SRC_PATH) not in sys.path:
+    sys.path.insert(0, str(SRC_PATH))
+
+from lazypaper.local_env import load_local_env
+
+load_local_env()
 
 
 def _load_config():
