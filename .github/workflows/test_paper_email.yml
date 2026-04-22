@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
   send-test:
@@ -31,6 +31,17 @@ jobs:
           RESEND_API_KEY: ${{ secrets.RESEND_API_KEY }}
           RESEND_FROM: ${{ secrets.RESEND_FROM }}
           LAZYPAPER_TO: ${{ secrets.LAZYPAPER_TO }}
-          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           PYTHONPATH: ${{ github.workspace }}/src
         run: python -m lazypaper
+
+      - name: Persist sent history
+        run: |
+          git config user.email "action@github.com"
+          git config user.name "GitHub Actions"
+          git add sent_emails.db
+          if git diff --cached --quiet; then
+            echo "No sent history changes to commit"
+            exit 0
+          fi
+          git commit -m "Update sent email history"
+          git push

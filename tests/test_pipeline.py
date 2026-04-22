@@ -1,4 +1,4 @@
-"""Local pipeline: fetch → filter → pick → email, with DB and Resend side effects mocked."""
+"""Local pipeline: fetch → filter → pick → email, with sent-store and Resend side effects mocked."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ import pytest
 @patch("lazypaper.main.send_articles_email")
 @patch("lazypaper.main.append_sent")
 @patch("lazypaper.main.load_sent_ids")
-def test_local_pipeline_mocks_postgres_and_email(
+def test_local_pipeline_mocks_sent_store_and_email(
     mock_load_sent: object,
     mock_append_sent: object,
     mock_send_articles: object,
@@ -20,7 +20,7 @@ def test_local_pipeline_mocks_postgres_and_email(
 ) -> None:
     """
     Run :func:`lazypaper.main.main` like ``python -m lazypaper`` but without
-    ``DATABASE_URL`` or Resend. Sent history is empty so already-sent articles
+    a live sent-history store or Resend. Sent history is empty so already-sent articles
     do not block selection; the email path still exercises live feed fetches.
     """
     mock_load_sent.return_value = set()

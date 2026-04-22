@@ -2,7 +2,7 @@
 
 Repository: [github.com/FinbarArgus/lazypaper](https://github.com/FinbarArgus/lazypaper).
 
-Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest per run) sampled from your feeds. Articles are scored against weighted keyword phrases in `config.py` (repository root); each phrase is matched in the **title, abstract, author list, and journal name** (case-insensitive), then one or more picks use **softmax-weighted randomness** so better matches are preferred but not deterministic. If fewer than `PAPERS_PER_DAY` unsent articles exist, the email contains whatever is available. Already-sent articles are stored in **PostgreSQL** using the **`DATABASE_URL`** environment variable (see *What you need*).
+Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest per run) sampled from your feeds. Articles are scored against weighted keyword phrases in `config.py` (repository root); each phrase is matched in the **title, abstract, author list, and journal name** (case-insensitive), then one or more picks use **softmax-weighted randomness** so better matches are preferred but not deterministic. If fewer than `PAPERS_PER_DAY` unsent articles exist, the email contains whatever is available. Already-sent articles are stored in a repo-local SQLite database file, **`sent_emails.db`**, which GitHub Actions commits back to your fork after each run.
 
 ## Layout
 
@@ -11,7 +11,7 @@ Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest pe
 | `config.py` | User settings: recipient, `SCHEDULE_*`, `PAPERS_PER_DAY`, `INTERESTS`, `EXCLUSIONS`, `SOURCES` (at repository root) |
 | `src/lazypaper/` | Python package: `main.py`, `fetcher.py`, `scorer.py`, `emailer.py`, `sent_store.py`, `cfg.py` (loads root `config.py`) |
 | `src/lazypaper/__main__.py` | Entry for `python -m lazypaper` |
-| `scripts/schema_sent_postgres.sql` | Create the `sent_article` table (run once in Neon) |
+| `sent_emails.db` | Local SQLite sent-history store; created automatically on first successful send and committed back to your fork |
 | `requirements.txt` | Pip dependencies (run from repo root) |
 | `pyproject.toml` | Pytest options (`[tool.pytest]`: `pythonpath`, markers; used locally and in CI) |
 | `tests/` | Network smoke tests and mocked pipeline (see *Tests* below) |
@@ -22,25 +22,49 @@ Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest pe
 
 ## What you need
 
-1. A public GitHub repository named **lazypaper** (push this folder to it).
-2. A [Resend](https://resend.com) account and API key.
+1. Your own fork of this repository. The intended setup is: fork it, edit `config.py`, and run the workflows from your fork.
+2. A [Resend](https://resend.com) account and API key. Each user needs their **own** Resend account; this repository does not share a central sender account.
 3. **A Resend-verified sending domain.** In the Resend dashboard, **Domains → Add Domain**, then add the SPF/DKIM DNS records they show and wait for verification. Without this, sending to any address that isn't the email you registered with Resend will fail with `The domain is invalid`.
-4. **A Neon database** for “already sent” state (one connection URL; never commit it to git):
-   1. Sign up, create a project, open the **SQL Editor**.
-   2. Paste the contents of [`scripts/schema_sent_postgres.sql`](scripts/schema_sent_postgres.sql) and run it.
-   3. In Neon, copy the **connection string** (a URI that starts with `postgresql://` or `postgres://`). Add `?sslmode=require` at the end if the connection test fails.
-   4. In GitHub: your repo **Settings → Secrets and variables → Actions → New repository secret** — name **`DATABASE_URL`**, value = that string.
-5. **Other** Actions secrets: **`RESEND_API_KEY`** (required), **`RESEND_FROM`** (strongly recommended, e.g. `LazyPaper <you@yourdomain.com>`; see Resend’s domain step above).
+4. GitHub Actions secrets in **your fork**: **`RESEND_API_KEY`** (required), **`RESEND_FROM`** (strongly recommended, e.g. `LazyPaper <you@yourdomain.com>`; see Resend’s domain step above).
+
+## Fork Setup
+
+1. Fork this repository to your own GitHub account.
+2. Clone your fork locally and edit **`config.py`** with your recipient email, schedule, interests, exclusions, and sources.
+3. Run the bootstrap command from the repo root:
+
+```bash
+./scripts/bootstrap.sh
+```
+
+4. The bootstrap script validates **`config.py`**, syncs **`.github/workflows/daily_email.yml`** to `SCHEDULE_CRON`, sets GitHub Actions secrets for **`RESEND_API_KEY`**, **`RESEND_FROM`**, and optional **`LAZYPAPER_TO`**, commits the config/workflow changes, pushes them to your fork, and triggers the test workflow unless you pass `--skip-test`.
+5. On the first successful test or scheduled run, the workflow creates **`sent_emails.db`** and commits it back to your fork.
+
+### Bootstrap Prerequisites
+
+- `gh` must be installed and authenticated with `gh auth login`.
+- The current checkout must point at a GitHub repo you can write to, typically your fork.
+- `git user.name` and `git user.email` must be configured so bootstrap can commit the workflow/config updates.
+- You need your own Resend credentials ready before running bootstrap.
+
+### Bootstrap Options
+
+```bash
+./scripts/bootstrap.sh --dry-run
+./scripts/bootstrap.sh --skip-test
+```
+
+`--dry-run` shows what bootstrap would do without changing GitHub or git state. `--skip-test` leaves setup in place without triggering the manual test email workflow.
 
 ## Schedule
 
 **You choose when the daily run fires** by setting **`SCHEDULE_MINUTE_UTC`** and **`SCHEDULE_HOUR_UTC`** in **`config.py`** at the repository root (24-hour **UTC**). The constant **`SCHEDULE_CRON`** is derived from them.
 
-GitHub Actions cannot read that file for the schedule trigger, so you must also set the `cron` line under `on.schedule` in **`.github/workflows/daily_email.yml`** to the same value as `SCHEDULE_CRON` (e.g. after editing the config, print it with `PYTHONPATH=src` from the repo root: `python -c "from lazypaper.cfg import SCHEDULE_CRON; print(SCHEDULE_CRON)"` and paste the result into the workflow).
+GitHub Actions cannot read that file for the schedule trigger, so the bootstrap command keeps the `cron` line under `on.schedule` in **`.github/workflows/daily_email.yml`** in sync with `SCHEDULE_CRON`. If you change the schedule later, rerun `./scripts/bootstrap.sh`.
 
 **Example:** the defaults are **0** minute, **16** hour UTC, i.e. **16:00 UTC**, which is **04:00** New Zealand Standard Time (NZST, UTC+12) or **05:00** local during **NZDT** (UTC+13).
 
-To **check that email works** without waiting for the schedule, use **Actions → Test paper email → Run workflow** (same behaviour as a scheduled run, including recording sends in PostgreSQL). From a machine with the [GitHub CLI](https://cli.github.com/):
+To **check that email works** without waiting for the schedule, use **Actions → Test paper email → Run workflow** (same behaviour as a scheduled run, including updating `sent_emails.db`). From a machine with the [GitHub CLI](https://cli.github.com/):
 
 ```bash
 gh workflow run test_paper_email.yml
@@ -54,9 +78,8 @@ Before each send, workflows run **`scripts/check_domains.py`**, which checks tha
 
 - **`resend.exceptions.ValidationError: The domain is invalid`** — Resend refused the `From` address. Either verify your own domain in the Resend dashboard and set the **`RESEND_FROM`** secret to a sender on that domain (e.g. `LazyPaper <news@your-domain.com>`), or make sure the recipient (`RECIPIENT_EMAIL` in `config.py`, or the `LAZYPAPER_TO` secret/env var) is exactly the email you registered with Resend and leave the default `onboarding@resend.dev` sender. If logs showed `from=''`, **`RESEND_FROM` was set but empty** (GitHub still injects the variable); the app now treats blank `RESEND_FROM` / `LAZYPAPER_TO` like unset and falls back to `config.py` defaults.
 - **`RESEND_API_KEY is not set`** — Add the `RESEND_API_KEY` GitHub Actions secret (and/or `export` it locally).
-- **`DATABASE_URL is not set`** — Add the `DATABASE_URL` secret (or `export` it locally) with your Neon connection string.
 - **DNS/feed errors printed by `scripts/check_domains.py`** — Fix the offending RSS URL in `SOURCES` or the email in `config.py` / the secret it names.
-- **Database connection errors** — Ensure `DATABASE_URL` in GitHub **Secrets** matches your Neon string, the `sent_article` table exists (run [`scripts/schema_sent_postgres.sql`](scripts/schema_sent_postgres.sql)), and SSL is required (`?sslmode=require` if the client needs it).
+- **Sent history was not saved** — Ensure GitHub Actions in your fork has permission to write to the repository contents; the workflow commits `sent_emails.db` back to your default branch after a successful run.
 
 ## Customise
 
@@ -65,7 +88,7 @@ Before each send, workflows run **`scripts/check_domains.py`**, which checks tha
 
 ## Tests
 
-**GitHub Actions → Tests** (workflow [`pytest.yml`](.github/workflows/pytest.yml)) runs `pytest` on pushes and pull requests to `main` or `master`, and you can run it on demand with **Actions → Tests → Run workflow** (or `gh workflow run pytest.yml` with the [GitHub CLI](https://cli.github.com/)). It is separate from the **Daily paper email** job (the daily schedule does not run the test suite). The tests call your public `SOURCES` over the network and do not send email or use PostgreSQL (the pipeline test mocks the database and Resend path).
+**GitHub Actions → Tests** (workflow [`pytest.yml`](.github/workflows/pytest.yml)) runs `pytest` on pushes and pull requests to `main` or `master`, and you can run it on demand with **Actions → Tests → Run workflow** (or `gh workflow run pytest.yml` with the [GitHub CLI](https://cli.github.com/)). It is separate from the **Daily paper email** job (the daily schedule does not run the test suite). The tests call your public `SOURCES` over the network and do not send email or write the local sent-history store (the pipeline test mocks the sent-store and Resend path).
 
 ## Local run
 
@@ -77,7 +100,6 @@ source .venv/bin/activate
 pip install -r requirements.txt
 export PYTHONPATH=src
 export RESEND_API_KEY=re_...
-export DATABASE_URL='postgresql://user:pass@host/db?sslmode=require'
 # optional: export RESEND_FROM='LazyPaper <onboarding@resend.dev>'
 python -m lazypaper
 ```
