@@ -63,9 +63,58 @@ def _article_html_section(article: dict[str, str]) -> str:
   </section>"""
 
 
-def build_html_digest(articles: list[dict[str, str]]) -> str:
+def _describe_daily(daily: dict | None) -> str:
+    """Build a short natural-language description of today's selection criteria.
+
+    Examples:
+      {extra_weights: {citations: 2}, year_min: 1990, year_max: 2020}
+        -> "high citation pick from 1990\u20132020"
+      {extra_weights: {recency: 1}}
+        -> "recent publication pick"
+      {extra_weights: {citations: 1, low_page_count: 2}}
+        -> "short paper, high citation pick"
+      {} -> "pick"
+    """
+    _WEIGHT_PHRASES: dict[str, str] = {
+        "citations": "high citation",
+        "recency": "recent publication",
+        "low_page_count": "short paper",
+    }
+    if not daily:
+        return "pick"
+
+    extra = daily.get("extra_weights") or {}
+    year_min = daily.get("year_min")
+    year_max = daily.get("year_max")
+
+    # Build qualifier from extra_weights sorted by descending weight value.
+    qualifiers = [
+        _WEIGHT_PHRASES[k]
+        for k, _ in sorted(extra.items(), key=lambda kv: -kv[1])
+        if k in _WEIGHT_PHRASES
+    ]
+    qualifier = ", ".join(qualifiers)
+
+    # Build year-range suffix.
+    if year_min and year_max:
+        year_suffix = f" from {year_min}\u2013{year_max}"
+    elif year_min:
+        year_suffix = f" from {year_min}"
+    elif year_max:
+        year_suffix = f" up to {year_max}"
+    else:
+        year_suffix = ""
+
+    parts = [qualifier, "pick"] if qualifier else ["pick"]
+    return " ".join(parts) + year_suffix
+
+
+def build_html_digest(articles: list[dict[str, str]], daily: dict | None = None) -> str:
     n = len(articles)
-    heading = "Today&apos;s picks" if n > 1 else "Today&apos;s pick"
+    description = _describe_daily(daily)
+    # _describe_daily ends with "pick[…]"; pluralise the word "pick" for multiple articles.
+    heading_desc = description.replace("pick", "picks", 1) if n > 1 else description
+    heading = f"Today&apos;s {heading_desc}"
     sections = "".join(_article_html_section(a) for a in articles)
     return f"""<!DOCTYPE html>
 <html>
@@ -77,7 +126,7 @@ def build_html_digest(articles: list[dict[str, str]]) -> str:
 </html>"""
 
 
-def send_articles_email(articles: list[dict[str, str]]) -> None:
+def send_articles_email(articles: list[dict[str, str]], daily: dict | None = None) -> None:
     if not articles:
         raise ValueError("articles must be non-empty")
 
@@ -96,7 +145,7 @@ def send_articles_email(articles: list[dict[str, str]]) -> None:
         "from": from_addr,
         "to": [_env_or_default("LAZYPAPER_TO", RECIPIENT_EMAIL)],
         "subject": subject,
-        "html": build_html_digest(articles),
+        "html": build_html_digest(articles, daily),
     }
 
     _send_with_friendly_errors(params)

@@ -159,6 +159,21 @@ def _fetch_europepmc_articles(journal: str, query: str, page_size: int = 50) -> 
         published = _xml_child_text(el, "firstPublicationDate")
         keywords = _europepmc_mesh_keywords_text(el)
 
+        citations_raw = _xml_child_text(el, "citedByCount")
+        try:
+            citations = str(max(0, int(citations_raw)))
+        except (ValueError, TypeError):
+            citations = "0"
+
+        page_info = _xml_child_text(el, "pageInfo")
+        page_count = "0"
+        if page_info:
+            import re as _re
+            m = _re.fullmatch(r"(\d+)\s*-\s*(\d+)", page_info.strip())
+            if m:
+                start, end = int(m.group(1)), int(m.group(2))
+                page_count = str(max(0, end - start + 1))
+
         out.append(
             {
                 "id": link,
@@ -169,6 +184,8 @@ def _fetch_europepmc_articles(journal: str, query: str, page_size: int = 50) -> 
                 "published": published,
                 "journal": journal,
                 "link": link,
+                "citations": citations,
+                "page_count": page_count,
             }
         )
     return out
@@ -237,6 +254,8 @@ def fetch_articles_for_source(source: dict[str, str]) -> list[dict[str, str]]:
                 "published": published,
                 "journal": journal,
                 "link": link,
+                "citations": "0",
+                "page_count": "0",
             }
         )
     return out

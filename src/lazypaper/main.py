@@ -3,17 +3,29 @@
 
 from __future__ import annotations
 
+import datetime
 import logging
 from urllib.parse import urlparse, urlunparse
 
-from .cfg import EXCLUSIONS, INTERESTS, PAPERS_PER_DAY
+from .cfg import DAILY_SCHEDULE, EXCLUSIONS, INTERESTS, PAPERS_PER_DAY
 from .emailer import send_articles_email, send_no_articles_email
 from .fetcher import fetch_all_articles
-from .scorer import filter_excluded, filter_unsent, pick_articles
+from .scorer import filter_by_year_range, filter_excluded, filter_unsent, pick_articles
 from .sent_store import append_sent, load_sent_ids
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
+
+
+def _resolve_daily(schedule: dict) -> dict:
+    """Return the day config for today's UTC weekday, falling back to 'default'."""
+    day_name = datetime.datetime.now(datetime.timezone.utc).strftime("%A").lower()
+    cfg = schedule.get(day_name) or schedule.get("default") or {}
+    return {
+        "year_min": cfg.get("year_min"),
+        "year_max": cfg.get("year_max"),
+        "extra_weights": cfg.get("extra_weights") or {},
+    }
 
 
 def _normalise_url(url: str) -> str:
@@ -59,20 +71,32 @@ def main() -> int:
             len(candidates),
         )
 
+    daily = _resolve_daily(DAILY_SCHEDULE)
+    before_yr = len(candidates)
+    candidates = filter_by_year_range(candidates, daily["year_min"], daily["year_max"])
+    if before_yr > len(candidates):
+        logger.info(
+            "Year filter [%s–%s] dropped %s article(s), %s candidates remain",
+            daily["year_min"] or "–∞",
+            daily["year_max"] or "+∞",
+            before_yr - len(candidates),
+            len(candidates),
+        )
+
     if not candidates:
         logger.warning("No unsent articles; sending notice email")
         send_no_articles_email()
         return 0
 
     n = max(1, PAPERS_PER_DAY)
-    chosen = pick_articles(candidates, n, interests=INTERESTS)
+    chosen = pick_articles(candidates, n, interests=INTERESTS, extra_weights=daily["extra_weights"])
     if not chosen:
         send_no_articles_email()
         return 0
 
     for i, a in enumerate(chosen):
         logger.info("Selected [%s/%s]: %s", i + 1, len(chosen), a.get("title", "")[:80])
-    send_articles_email(chosen)
+    send_articles_email(chosen, daily)
     append_sent(chosen)
     for a in chosen:
         logger.info("Recorded send for %s", a["id"])

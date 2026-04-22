@@ -17,6 +17,8 @@ _ARTICLE_KEYS = {
     "published",
     "journal",
     "link",
+    "citations",
+    "page_count",
 }
 
 

@@ -71,5 +71,46 @@ SELECTION_TEMPERATURE = 0.5
 # How many distinct papers to include in one daily email (and record as sent at once).
 PAPERS_PER_DAY = 1
 
-# Optional override via env in CI: default Resend sandbox sender.
+# Per-day config: keys are lowercase weekday names ("monday" … "sunday") or "default".
+# The entry whose key matches today's UTC weekday is used; falls back to "default" if not found.
+#
+# year_min / year_max  — only consider papers published in this range (None = no limit).
+# extra_weights        — additional scoring signals on top of INTERESTS keyword matching.
+#   Supported keys:
+#     "citations"      — log(1 + citation_count) × weight  (Europe PMC sources only; 0 for RSS)
+#     "recency"        — max(0, 10 − years_ago) × weight   (all sources)
+#     "low_page_count" — max(0, 20 − page_count) × weight  (Europe PMC sources only; 0 for RSS)
+DAILY_SCHEDULE: dict = {
+    "monday": {
+        "year_min": None,
+        "year_max": None,
+        "extra_weights": {},
+    },
+    "tuesday": {
+        "year_min": 1950,
+        "year_max": 2010,
+        "extra_weights": {"citations": 2},
+    },
+    "wednesday": {
+        "year_min": 1990,
+        "year_max": None,
+        "extra_weights": {"citations": 1, "low_page_count": 2},
+    },
+    "thursday": {
+        "year_min": None,
+        "year_max": None,
+        "extra_weights": {"recency": 2},
+    },
+    "friday": {
+        "year_min": 2000,
+        "year_max": None,
+        "extra_weights": {"citations": 2},
+    },
+    # Example: prefer recent, highly-cited papers on Mondays:
+    # "monday": {
+    #     "year_min": 2021,
+    #     "year_max": None,
+    #     "extra_weights": {"citations": 2, "recency": 1},
+    # },
+}
 DEFAULT_RESEND_FROM = "LazyPaper <onboarding@resend.dev>"

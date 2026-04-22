@@ -4,9 +4,70 @@ from __future__ import annotations
 
 import math
 import random
+import re
+from datetime import datetime, timezone
 from typing import Iterable
 
 from .cfg import INTERESTS, SELECTION_TEMPERATURE
+
+
+def _parse_year(published: str) -> int:
+    """Extract a 4-digit year from a published string; returns 0 if none found."""
+    m = re.search(r'\b(19|20)\d{2}\b', published or "")
+    return int(m.group()) if m else 0
+
+
+def filter_by_year_range(
+    articles: Iterable[dict[str, str]],
+    year_min: int | None = None,
+    year_max: int | None = None,
+) -> list[dict[str, str]]:
+    """Keep articles whose publication year falls within [year_min, year_max].
+
+    Articles with an unparseable year (year == 0) are excluded when either bound is set.
+    Both bounds are inclusive. Pass both as None to return all articles unchanged.
+    """
+    if year_min is None and year_max is None:
+        return list(articles)
+    out = []
+    for a in articles:
+        year = _parse_year(a.get("published", ""))
+        if year == 0:
+            continue  # exclude unknowns when a bound is active
+        if year_min is not None and year < year_min:
+            continue
+        if year_max is not None and year > year_max:
+            continue
+        out.append(a)
+    return out
+
+
+def _score_extra(article: dict[str, str], extra_weights: dict[str, float] | None) -> float:
+    """Additional score from citation count, recency, or page count."""
+    if not extra_weights:
+        return 0.0
+    score = 0.0
+    current_year = datetime.now(timezone.utc).year
+    for feature, weight in extra_weights.items():
+        if feature == "citations":
+            try:
+                c = max(0, int(article.get("citations", 0) or 0))
+            except (ValueError, TypeError):
+                c = 0
+            score += weight * math.log1p(c)
+        elif feature == "recency":
+            pub_year = _parse_year(article.get("published", ""))
+            if pub_year:
+                years_ago = current_year - pub_year
+                score += weight * max(0.0, 10.0 - years_ago)
+        elif feature == "low_page_count":
+            try:
+                pc = max(0, int(article.get("page_count", 0) or 0))
+            except (ValueError, TypeError):
+                pc = 0
+            score += weight * max(0.0, 20.0 - pc)
+        # Unknown keys are silently ignored.
+    return score
 
 
 def _article_keyword_text(article: dict[str, str]) -> str:
@@ -20,7 +81,11 @@ def _article_keyword_text(article: dict[str, str]) -> str:
     return " ".join(p for p in parts if p).lower()
 
 
-def score_article(article: dict[str, str], interests: dict[str, int] | None = None) -> float:
+def score_article(
+    article: dict[str, str],
+    interests: dict[str, int] | None = None,
+    extra_weights: dict[str, float] | None = None,
+) -> float:
     interests = interests or INTERESTS
     text = _article_keyword_text(article)
     total = 0.0
@@ -28,6 +93,7 @@ def score_article(article: dict[str, str], interests: dict[str, int] | None = No
         if not phrase:
             continue
         total += weight * text.count(phrase.lower())
+    total += _score_extra(article, extra_weights)
     return total
 
 
@@ -36,6 +102,7 @@ def pick_article(
     *,
     interests: dict[str, int] | None = None,
     temperature: float | None = None,
+    extra_weights: dict[str, float] | None = None,
 ) -> dict[str, str] | None:
     """
     Pick one article using softmax probabilities over scores.
@@ -47,7 +114,7 @@ def pick_article(
     if t <= 0:
         t = 0.01
 
-    scores = [score_article(a, interests) for a in articles]
+    scores = [score_article(a, interests, extra_weights) for a in articles]
     adjusted = [s + 0.01 for s in scores]
     m = max(adjusted)
     exps = [math.exp((s - m) / t) for s in adjusted]
@@ -62,6 +129,7 @@ def pick_articles(
     *,
     interests: dict[str, int] | None = None,
     temperature: float | None = None,
+    extra_weights: dict[str, float] | None = None,
 ) -> list[dict[str, str]]:
     """Pick up to n distinct articles, each with softmax on the remaining pool (no replacement)."""
     if n < 1 or not articles:
@@ -69,7 +137,7 @@ def pick_articles(
     pool = list(articles)
     out: list[dict[str, str]] = []
     for _ in range(min(n, len(pool))):
-        one = pick_article(pool, interests=interests, temperature=temperature)
+        one = pick_article(pool, interests=interests, temperature=temperature, extra_weights=extra_weights)
         if not one:
             break
         out.append(one)
