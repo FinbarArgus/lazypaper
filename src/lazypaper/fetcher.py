@@ -3,22 +3,45 @@
 from __future__ import annotations
 
 import logging
+import re
 import xml.etree.ElementTree as ET
 from typing import Any
 
 import feedparser
 import requests
 from bs4 import BeautifulSoup
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 
 from .cfg import SOURCES
 
 logger = logging.getLogger(__name__)
+
+_DOI_RE = re.compile(r"10\.\d{4,9}/[-._;()/:A-Z0-9]+", re.IGNORECASE)
+_UNKNOWN_CITATIONS_DEFAULT = 10
 
 # Many publisher CDNs return 403 to non-browser user agents; identify as a normal feed client.
 USER_AGENT = (
     "Mozilla/5.0 (compatible; lazypaper/1.0; +https://github.com; RSS reader; "
     "like Gecko) Chrome/120.0.0.0 Safari/537.36"
 )
+
+# Retry up to 3 times on transient server errors (5xx) and connection failures,
+# with exponential backoff: 0 s, 2 s, 4 s between attempts.
+_RETRY = Retry(
+    total=3,
+    backoff_factor=1,
+    status_forcelist={500, 502, 503, 504},
+    raise_on_status=False,
+)
+
+
+def _session() -> requests.Session:
+    s = requests.Session()
+    adapter = HTTPAdapter(max_retries=_RETRY)
+    s.mount("https://", adapter)
+    s.mount("http://", adapter)
+    return s
 
 
 def _strip_html(html: str | None) -> str:
@@ -98,6 +121,70 @@ def _entry_summary(entry: Any) -> str:
     return ""
 
 
+def _extract_doi(text: str | None) -> str | None:
+    if not text:
+        return None
+    m = _DOI_RE.search(text)
+    if not m:
+        return None
+    # Some feeds include trailing punctuation around DOI-like text.
+    return m.group(0).rstrip(".,;:)]\"'").lower()
+
+
+def _entry_doi(entry: Any, *, link: str, abstract: str, title: str) -> str | None:
+    candidates: list[str] = []
+
+    for attr in ("doi", "dc_identifier", "prism_doi", "id"):
+        v = getattr(entry, attr, None)
+        if isinstance(v, str) and v.strip():
+            candidates.append(v)
+
+    if link:
+        candidates.append(link)
+    if title:
+        candidates.append(title)
+    if abstract:
+        candidates.append(abstract)
+
+    for doi in (_extract_doi(c) for c in candidates):
+        if doi:
+            return doi
+    return None
+
+
+def _openalex_citation_count_for_doi(doi: str) -> int | None:
+    url = "https://api.openalex.org/works"
+    params = {
+        "filter": f"doi:https://doi.org/{doi}",
+        "select": "cited_by_count",
+        "per-page": "1",
+    }
+    try:
+        r = _session().get(
+            url,
+            params=params,
+            timeout=30,
+            headers={
+                "User-Agent": USER_AGENT,
+                "Accept": "application/json",
+            },
+        )
+        r.raise_for_status()
+        data = r.json()
+    except (requests.RequestException, ValueError) as e:
+        logger.debug("OpenAlex lookup failed for DOI %s: %s", doi, e)
+        return None
+
+    results = data.get("results") if isinstance(data, dict) else None
+    if not isinstance(results, list) or not results:
+        return None
+
+    raw = results[0].get("cited_by_count") if isinstance(results[0], dict) else None
+    if isinstance(raw, int):
+        return max(0, raw)
+    return None
+
+
 def _xml_localname(tag: str) -> str:
     if tag.startswith("{") and "}" in tag:
         return tag.split("}", 1)[1]
@@ -121,7 +208,7 @@ def _fetch_europepmc_articles(journal: str, query: str, page_size: int = 50) -> 
         "format": "xml",
     }
     try:
-        r = requests.get(
+        r = _session().get(
             url,
             params=params,
             timeout=45,
@@ -193,7 +280,7 @@ def _fetch_europepmc_articles(journal: str, query: str, page_size: int = 50) -> 
 
 def _fetch_feed_xml(url: str) -> str | None:
     try:
-        r = requests.get(
+        r = _session().get(
             url,
             timeout=45,
             headers={
@@ -230,6 +317,8 @@ def fetch_articles_for_source(source: dict[str, str]) -> list[dict[str, str]]:
             getattr(parsed, "bozo_exception", None),
         )
 
+    doi_to_citations: dict[str, int | None] = {}
+
     for entry in parsed.entries:
         link = _entry_link(entry)
         if not link:
@@ -244,6 +333,14 @@ def fetch_articles_for_source(source: dict[str, str]) -> list[dict[str, str]]:
         elif getattr(entry, "updated", None):
             published = str(entry.updated)
 
+        doi = _entry_doi(entry, link=link, abstract=abstract, title=title)
+        citation_count: int | None = None
+        if doi:
+            if doi not in doi_to_citations:
+                doi_to_citations[doi] = _openalex_citation_count_for_doi(doi)
+            citation_count = doi_to_citations[doi]
+        citations = str(citation_count if citation_count is not None else _UNKNOWN_CITATIONS_DEFAULT)
+
         out.append(
             {
                 "id": link,
@@ -254,7 +351,7 @@ def fetch_articles_for_source(source: dict[str, str]) -> list[dict[str, str]]:
                 "published": published,
                 "journal": journal,
                 "link": link,
-                "citations": "0",
+                "citations": citations,
                 "page_count": "0",
             }
         )
