@@ -16,5 +16,11 @@
     "sent_at": "2026-04-22",
     "title": "Problems, Progress and Perspectives in Mathematical and Computational Biology",
     "journal": "Bulletin of Mathematical Biology"
+  },
+  {
+    "id": "https://journals.physiology.org/doi/abs/10.1152/ajpheart.00899.2025",
+    "sent_at": "2026-04-22",
+    "title": "Drug repurposing using transcriptomics: principles and unmet needs in cardiovascular disease",
+    "journal": "AJP Heart and Circulatory Physiology"
   }
 ]
