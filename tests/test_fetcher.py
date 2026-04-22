@@ -108,3 +108,18 @@ def test_europepmc_start_page_returns_1_for_small_result_set(monkeypatch) -> Non
     monkeypatch.setattr(fetcher, "datetime", _FakeDatetime)
 
     assert fetcher._europepmc_start_page(total_hits=15, page_size=20, query="abc") == 1
+
+
+def test_europepmc_query_with_year_range_bounded() -> None:
+    query = fetcher._europepmc_query_with_year_range("ISSN:1742-5689", 1990, 2020)
+    assert query == "(ISSN:1742-5689) AND FIRST_PDATE:[1990-01-01 TO 2020-12-31]"
+
+
+def test_europepmc_query_with_year_range_open_ended() -> None:
+    query = fetcher._europepmc_query_with_year_range("neuroscience", 1990, None)
+    assert query == "(neuroscience) AND FIRST_PDATE:[1990-01-01 TO 9999-12-31]"
+
+
+def test_europepmc_query_with_year_range_no_bounds_returns_original() -> None:
+    query = fetcher._europepmc_query_with_year_range("neuroscience", None, None)
+    assert query == "neuroscience"

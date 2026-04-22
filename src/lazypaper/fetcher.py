@@ -207,6 +207,15 @@ def _in_year_range(article: dict[str, str], year_min: int | None, year_max: int 
     return True
 
 
+def _europepmc_query_with_year_range(query: str, year_min: int | None, year_max: int | None) -> str:
+    if year_min is None and year_max is None:
+        return query
+
+    lower = f"{year_min}-01-01" if year_min is not None else "1000-01-01"
+    upper = f"{year_max}-12-31" if year_max is not None else "9999-12-31"
+    return f"({query}) AND FIRST_PDATE:[{lower} TO {upper}]"
+
+
 def _stable_rotation_seed(*parts: str) -> int:
     seed = 0
     for part in parts:
@@ -414,6 +423,7 @@ def _fetch_europepmc_articles(
 ) -> list[dict[str, str]]:
     """Recent articles from Europe PMC search API with fallback request shapes."""
     url = "https://www.ebi.ac.uk/europepmc/webservices/rest/search"
+    effective_query = _europepmc_query_with_year_range(query, year_min, year_max)
     request_attempts = [
         ("xml", "core", str(page_size), 45),
         ("json", "core", "20", 30),
@@ -432,7 +442,7 @@ def _fetch_europepmc_articles(
                 probe_resp = _session().get(
                     url,
                     params={
-                        "query": query,
+                        "query": effective_query,
                         "resultType": result_type,
                         "pageSize": size,
                         "format": fmt,
@@ -450,7 +460,7 @@ def _fetch_europepmc_articles(
                 probe_resp = _session().get(
                     url,
                     params={
-                        "query": query,
+                        "query": effective_query,
                         "resultType": result_type,
                         "pageSize": size,
                         "format": fmt,
@@ -473,7 +483,7 @@ def _fetch_europepmc_articles(
             errors.append(f"{fmt}/pageSize={size}/page=1: {e}")
             continue
 
-        start_page = _europepmc_start_page(hit_count, page_size_int, query)
+        start_page = _europepmc_start_page(hit_count, page_size_int, effective_query)
         end_page = min(_EUROPEPMC_MAX_PAGE, start_page + _EUROPEPMC_PAGE_WINDOW - 1)
         pages_to_fetch = list(range(start_page, end_page + 1))
 
@@ -486,7 +496,7 @@ def _fetch_europepmc_articles(
                         page_resp = _session().get(
                             url,
                             params={
-                                "query": query,
+                                "query": effective_query,
                                 "resultType": result_type,
                                 "pageSize": size,
                                 "format": fmt,
@@ -504,7 +514,7 @@ def _fetch_europepmc_articles(
                         page_resp = _session().get(
                             url,
                             params={
-                                "query": query,
+                                "query": effective_query,
                                 "resultType": result_type,
                                 "pageSize": size,
                                 "format": fmt,
@@ -546,9 +556,8 @@ def _fetch_europepmc_articles(
             return combined
 
     if errors:
-        logger.warning("Europe PMC fetch failed (%s): %s", query, " | ".join(errors))
+        logger.warning("Europe PMC fetch failed (%s): %s", effective_query, " | ".join(errors))
     return []
-
 
 def _fetch_feed_xml(url: str) -> str | None:
     try:
@@ -565,7 +574,6 @@ def _fetch_feed_xml(url: str) -> str | None:
     except requests.RequestException as e:
         logger.warning("HTTP fetch failed for %s: %s", url, e)
         return None
-
 
 def fetch_articles_for_source(
     source: dict[str, str],
