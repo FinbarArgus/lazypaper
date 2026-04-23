@@ -22,7 +22,7 @@ Daily email with up to **`PAPERS_PER_DAY`** journal articles (one HTML digest pe
 
 ## What you need
 
-1. Your own fork of this repository. The intended setup is: fork it, edit `config.py`, and run the workflows from your fork.
+1. Your own fork of this repository. The intended setup is: fork it, edit `config.py`, remove or clear sent\_emails.db and run the workflows from your fork.
 2. A [Resend](https://resend.com) account and API key. Each user needs their **own** Resend account; this repository does not share a central sender account.
 3. **A Resend-verified sending domain.** In the Resend dashboard, **Domains → Add Domain**, then add the SPF/DKIM DNS records they show and wait for verification. Without this, sending to any address that isn't the email you registered with Resend will fail with `The domain is invalid`.
 4. GitHub Actions secrets in **your fork**: **`RESEND_API_KEY`** (required), **`RESEND_FROM`** (strongly recommended, e.g. `LazyPaper <you@yourdomain.com>`; see Resend’s domain step above).
