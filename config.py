@@ -15,6 +15,7 @@ SCHEDULE_CRON = f"{SCHEDULE_MINUTE_UTC} {SCHEDULE_HOUR_UTC} * * *"
 INTERESTS: dict[str, int] = {
     "autonomic neuroscience": 5,
     "microvasculature": 5,
+    "pericytes": 5,
     "uncertainty quantification": 3,
     "digital twin": 3,
     "computational biology": 2,
